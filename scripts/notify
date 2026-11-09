@@ -1,0 +1,40 @@
+#!/bin/bash
+# 人への通知を Discord に送る。escalate・incident・groom・retro が使う。
+#
+# 使い方:
+#   scripts/notify "本文"
+#   echo "本文" | scripts/notify
+#
+# 送り先は環境変数 DISCORD_WEBHOOK_URL（GitHub Actions では同名の Secret）。
+# 未設定のときは送らずに本文を標準出力に出し、失敗にはしない（作業を止めないため）。
+
+set -u
+
+if [ $# -ge 1 ]; then
+  message="$*"
+else
+  message=$(cat)
+fi
+
+if [ -z "${message// /}" ]; then
+  echo "notify: 本文が空です" >&2
+  exit 2
+fi
+
+# Discord の上限は 2000 文字。長いときは切って、続きはリンク先で読んでもらう。
+if [ "${#message}" -gt 1900 ]; then
+  message="${message:0:1900}…（続きはリンク先）"
+fi
+
+if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
+  echo "notify: DISCORD_WEBHOOK_URL が未設定のため送信しません。本文:" >&2
+  printf '%s\n' "$message"
+  exit 0
+fi
+
+payload=$(MESSAGE="$message" python3 -c 'import json, os; print(json.dumps({"content": os.environ["MESSAGE"], "allowed_mentions": {"parse": []}}))')
+
+if ! curl -fsS -X POST -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL" >/dev/null; then
+  echo "notify: Discord への送信に失敗しました" >&2
+  exit 1
+fi

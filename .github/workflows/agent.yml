@@ -1,0 +1,125 @@
+# AI を自動で起動する（docs/workflow.md の「3. 起動のきっかけ」）。
+# サブスクで動かすため、Secret CLAUDE_CODE_OAUTH_TOKEN（手元で `claude setup-token`）を使う。API キーは使わない。
+# 通知用に Secret DISCORD_WEBHOOK_URL を AI の環境に渡す（scripts/notify が使う）。
+name: Agent
+
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  schedule:
+    - cron: "0 22 * * *"   # 毎日 7:00（日本時間）groom
+    - cron: "0 23 * * 0"   # 毎週月曜 8:00（日本時間）retro
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "groom か retro"
+        required: true
+        default: groom
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: read
+  id-token: write
+
+# 同じ Issue・PR で AI が同時に2つ動かないようにする。
+concurrency:
+  group: agent-${{ github.event.issue.number || github.event.pull_request.number || github.event.workflow_run.head_branch || github.event.schedule || github.run_id }}
+  cancel-in-progress: false
+
+env:
+  DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+jobs:
+  # Issue に agent ラベルが付いたら、triage から自走ワークフローを始める。
+  start:
+    if: github.event_name == 'issues' && github.event.label.name == 'agent'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # groom が起こした Issue（Claude の bot が付けた agent ラベル）でも始められるようにする。
+          allowed_bots: claude
+          prompt: |
+            Issue #${{ github.event.issue.number }} を、AGENTS.md と docs/workflow.md に従って自走で進めてください。
+            triage スキルから始め、各スキルの「次に呼ぶスキル」に従って、PR の作成と別の AI へのレビュー依頼（ship）まで進めます。
+            Issue に `codex` ラベルを付けた場合は、triage スキルのとおり Issue に `@codex` で作業を頼むコメントをして終えます（24時間たっても Codex の PR がなければ groom が Claude に引き継ぎます）。
+            人に判断を仰ぐのは escalate スキルの条件に当てはまるときだけです。
+
+  # コメント・レビュー本文で @claude と呼ばれたとき、または Claude の PR にレビューが付いたとき。
+  # Codex のレビュー（bot）にも反応できるよう、Codex の bot 名を許可する（リポジトリ変数 CODEX_BOT_LOGIN で変更可）。
+  respond:
+    if: >-
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && startsWith(github.event.pull_request.head.ref, 'claude/')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          trigger_phrase: "@claude"
+          allowed_bots: ${{ vars.CODEX_BOT_LOGIN || 'chatgpt-codex-connector' }}
+          # 「 #」は YAML ではコメントの始まりになるので、式は折りたたみの書き方（>-）で渡す。
+          prompt: >-
+            ${{ github.event_name == 'pull_request_review' && startsWith(github.event.pull_request.head.ref, 'claude/') && format('PR #{0} にレビューが付きました。AGENTS.md に従い、必須の指摘があれば address スキル、なければ merge-gate スキルを使ってください。往復の回数（2回まで）を守ってください。', github.event.pull_request.number) || '' }}
+
+  # 作業ブランチの CI が失敗したら fix-ci。回数の上限（3回）は fix-ci スキルが守る。
+  fix-ci:
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      startsWith(github.event.workflow_run.head_branch, 'claude/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # 作業ブランチへの push は Claude の bot が行うので、その CI の失敗でも動けるようにする。
+          allowed_bots: claude
+          additional_permissions: |
+            actions: read
+          prompt: |
+            ブランチ ${{ github.event.workflow_run.head_branch }} の CI が失敗しました（実行: ${{ github.event.workflow_run.html_url }}）。
+            AGENTS.md に従い、fix-ci スキルで原因を再現して直し、同じブランチに push してください。
+            この PR で fix-ci が3回続けて失敗している場合は、直さずに escalate スキルを使ってください。
+
+  # 定期実行：毎日 groom、毎週 retro。
+  scheduled:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: ${{ (github.event.schedule == '0 23 * * 0' || inputs.task == 'retro') && 'AGENTS.md に従い、retro スキルで過去1週間を振り返り、改善 PR と週の報告を出してください。' || 'AGENTS.md に従い、groom スキルで保留中の Issue の再開とタスクの発掘をしてください。' }}

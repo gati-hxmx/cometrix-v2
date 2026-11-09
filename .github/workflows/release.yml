@@ -1,0 +1,71 @@
+# ステージング確認 → 本番の段階公開 → 異常なら自動ロールバック（release スキルが見守る）。
+# 技術スタックを決めたら stack-select がデプロイ手順を書く。それまでは何もしない。
+# リポジトリ変数 AUTO_DEPLOY_ENABLED が "true" のときだけ動く。
+name: Release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 1回に1つ。途中で止めない（マイグレーション中の可能性があるため）。
+concurrency:
+  group: release-production
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: リリースするか
+    runs-on: ubuntu-24.04
+    outputs:
+      go: ${{ steps.decide.outputs.go }}
+    steps:
+      - id: decide
+        env:
+          ENABLED: ${{ vars.AUTO_DEPLOY_ENABLED }}
+          EVENT: ${{ github.event_name }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+        run: |
+          go=false
+          if [ "$ENABLED" != "true" ]; then
+            echo "::notice::リリースしません：リポジトリ変数 AUTO_DEPLOY_ENABLED が true ではありません"
+          elif [ "$EVENT" = "workflow_run" ] && { [ "$CONCLUSION" != "success" ] || [ "$RUN_EVENT" != "push" ]; }; then
+            echo "::notice::リリースしません：main への push で CI が通っていません"
+          else
+            go=true
+          fi
+          echo "go=$go" >> "$GITHUB_OUTPUT"
+
+  release:
+    name: ステージング → 段階公開
+    needs: gate
+    if: needs.gate.outputs.go == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: ステージングへデプロイしてスモークテスト
+        run: echo "stack-select が書く" && exit 1
+      - name: 本番へ段階公開（例：5% → 25% → 100%）、各段階で監視を確かめる
+        run: echo "stack-select が書く" && exit 1
+
+  rollback:
+    name: 失敗したらロールバックして通知
+    needs: release
+    if: failure() && needs.release.result == 'failure'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: 直前のリリースに戻す
+        run: echo "stack-select が書く"
+      - name: 通知
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          scripts/notify "本番リリースに失敗し、ロールバックしました。incident スキルで対応します。 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

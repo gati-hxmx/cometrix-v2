@@ -1,0 +1,118 @@
+#!/bin/bash
+# このリポジトリの検証をまとめて実行する。CI・Stop hook・各スキルが使う。
+#
+# 技術スタックを決めたら、下の「プロジェクトの検証」にテスト・型チェック・Lint・ビルドを書く
+# （docs/stack.md の「3. スタックを決めたらやること」）。
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+failed=0
+step() { echo "▶ $1"; }
+
+# --- 基盤の検証（スキル・文書・スクリプト） ---
+
+step "スキルの形式"
+for skill in .agents/skills/*/; do
+  name=$(basename "$skill")
+  file="$skill/SKILL.md"
+  if [ ! -f "$file" ]; then
+    echo "  ✗ $file がありません"; failed=1; continue
+  fi
+  head -1 "$file" | grep -qx -- '---' || { echo "  ✗ $file の先頭に frontmatter がありません"; failed=1; }
+  grep -qx "name: $name" "$file" || { echo "  ✗ $file の name がフォルダ名（$name）と違います"; failed=1; }
+  grep -q '^description: .\+' "$file" || { echo "  ✗ $file に description がありません"; failed=1; }
+  link=".claude/skills/$name"
+  if [ ! -L "$link" ] || [ ! -f "$link/SKILL.md" ]; then
+    echo "  ✗ $link が .agents/skills/$name へのリンクになっていません"; failed=1
+  fi
+done
+
+step "文書内のリンク"
+# [文字](相対パス#見出し) のリンク先のファイルと見出しが存在するか。http・mailto は対象外。
+git ls-files --cached --others --exclude-standard '*.md' 2>/dev/null | python3 -c '
+import os, re, sys
+
+def slugs(path):
+    # GitHub と同じ規則で見出しのアンカーを作る
+    found, seen, fence = set(), {}, False
+    for line in open(path, encoding="utf-8"):
+        if line.startswith("```"):
+            fence = not fence
+        if fence:
+            continue
+        m = re.match(r"#{1,6}\s+(.*?)\s*#*\s*$", line)
+        if not m:
+            continue
+        base = re.sub(r"[^\w\- ]", "", m.group(1).strip().lower()).replace(" ", "-")
+        n = seen.get(base, 0)
+        seen[base] = n + 1
+        found.add(base if n == 0 else f"{base}-{n}")
+    return found
+
+bad = 0
+for md in sys.stdin.read().split():
+    text = open(md, encoding="utf-8").read()
+    for target, anchor in re.findall(r"\]\(([^)#\s]*)(?:#([^)\s]+))?\)", text):
+        if re.match(r"(https?:|mailto:)", target):
+            continue
+        path = os.path.join(os.path.dirname(md), target) if target else md
+        if target and not os.path.exists(path):
+            print(f"  ✗ {md} → {target} が見つかりません")
+            bad = 1
+        elif anchor and path.endswith(".md") and anchor not in slugs(path):
+            print(f"  ✗ {md} → {target}#{anchor} の見出しが見つかりません")
+            bad = 1
+sys.exit(bad)
+' || failed=1
+
+step "シェルスクリプト"
+if command -v shellcheck >/dev/null 2>&1; then
+  shellcheck scripts/ai scripts/notify scripts/check scripts/setup-github.sh .claude/hooks/*.sh || failed=1
+else
+  echo "  （shellcheck が無いので省略）"
+fi
+
+step "ワークフローの YAML"
+if python3 -c 'import yaml' 2>/dev/null; then
+  # shellcheck disable=SC2016 # Python の中の ${{ は GitHub の式の文字で、シェルの展開ではない
+  python3 -c '
+import glob, sys, yaml
+bad = 0
+for f in glob.glob(".github/**/*.yml", recursive=True):
+    try:
+        doc = yaml.safe_load(open(f, encoding="utf-8"))
+    except yaml.YAMLError as e:
+        print(f"  ✗ {f}: {e}".splitlines()[0]); bad = 1
+        continue
+    # 値の中の「 #」は YAML ではコメントになり、式が途中で切れると GitHub はワークフローを無効にする。
+    stack = [("", doc)]
+    while stack:
+        where, v = stack.pop()
+        if isinstance(v, dict):
+            stack += [(f"{where}.{k}", x) for k, x in v.items()]
+        elif isinstance(v, list):
+            stack += [(f"{where}[{i}]", x) for i, x in enumerate(v)]
+        elif isinstance(v, str) and v.count("${{") != v.count("}}"):
+            print(f"  ✗ {f}: {where} の式が閉じていません（値の中の「 #」がコメント扱いになっていないか）"); bad = 1
+sys.exit(bad)
+' || failed=1
+else
+  echo "  （PyYAML が無いので省略）"
+fi
+
+step "設定ファイルの JSON"
+python3 -m json.tool .claude/settings.json >/dev/null || { echo "  ✗ .claude/settings.json が JSON として読めません"; failed=1; }
+
+# --- プロジェクトの検証（技術スタックを決めたら書く） ---
+# 例（標準構成）:
+#   step "型チェック"; npm run typecheck || failed=1
+#   step "Lint";       npx biome check . || failed=1
+#   step "テスト";     npm test || failed=1
+#   step "ビルド";     npm run build || failed=1
+
+if [ "$failed" -ne 0 ]; then
+  echo "✗ 検証に失敗しました"
+  exit 1
+fi
+echo "✓ すべての検証が通りました"

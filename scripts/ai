@@ -1,0 +1,96 @@
+#!/bin/bash
+# Codexに依頼し、Codexが使用上限や混雑で使えなければClaudeへ同じ依頼を回す。
+#
+# 使い方（リポジトリのルートで）:
+#   scripts/ai "README の誤字を直して"
+#   scripts/ai --review "このdiffをレビューして"   # 読み取りだけ（ファイルを変えない）
+#   git diff origin/main...HEAD | scripts/ai --review "このdiffをレビューして"
+#
+# 詳しくは docs/ai-collaboration.md の「6. 利用上限に当たったとき」。
+
+set -u
+
+usage() {
+  echo "使い方: scripts/ai [--review] \"依頼内容\"" >&2
+  exit 2
+}
+
+mode=edit
+if [ "${1:-}" = "--review" ]; then
+  mode=review
+  shift
+fi
+[ $# -ge 1 ] || usage
+prompt="$*"
+
+for cmd in codex claude; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "ai: $cmd が見つかりません。新しいターミナルを開いてから試してください。" >&2
+    exit 127
+  fi
+done
+
+workdir=$(mktemp -d "${TMPDIR:-/tmp}/agent-ai.XXXXXX")
+trap 'rm -rf "$workdir"' EXIT
+
+# 標準入力（diffなど）は、Claudeへ回すときにもう一度使うので保存しておく。
+stdin_file="$workdir/stdin"
+if [ -p /dev/stdin ] || [ -f /dev/stdin ]; then
+  cat > "$stdin_file"
+else
+  : > "$stdin_file"
+fi
+
+if [ "$mode" = review ]; then
+  codex_args=(exec --sandbox read-only)
+  claude_args=(-p)
+else
+  # Codex CLI 0.164 は --full-auto を受け付けない。
+  codex_args=(exec --sandbox workspace-write)
+  claude_args=(-p --permission-mode acceptEdits)
+fi
+
+codex_log="$workdir/codex.log"
+
+run_codex() {
+  if [ -s "$stdin_file" ]; then
+    codex "${codex_args[@]}" "$prompt" < "$stdin_file" 2>&1 | tee "$codex_log"
+  else
+    codex "${codex_args[@]}" "$prompt" < /dev/null 2>&1 | tee "$codex_log"
+  fi
+  codex_status=${PIPESTATUS[0]}
+}
+
+# Codexが使えない種類のエラーか。ERROR行に出たもの、または失敗終了したときの出力で判定する。
+unavailable_pattern="usage limit|rate limit|at capacity|too many requests"
+codex_unavailable() {
+  grep -qiE "^ERROR:.*($unavailable_pattern)" "$codex_log" && return 0
+  [ "$codex_status" -ne 0 ] && grep -qiE "$unavailable_pattern" "$codex_log"
+}
+
+run_codex
+if codex_unavailable && grep -qiE "at capacity" "$codex_log"; then
+  # 混雑は一時的なことが多いので、Claudeに回す前に一度だけやり直す。
+  echo >&2
+  echo "ai: Codexが混雑しています。${AI_RETRY_WAIT:-15}秒後にもう一度試します。" >&2
+  sleep "${AI_RETRY_WAIT:-15}"
+  run_codex
+fi
+
+if ! codex_unavailable; then
+  exit "$codex_status"
+fi
+
+echo >&2
+echo "ai: Codexが使えないため（使用上限または混雑）、同じ依頼をClaudeに回します。" >&2
+echo >&2
+
+claude_prompt="Codexが使えないため（使用上限または混雑）、Codexの代わりに次の依頼を行ってください。AGENTS.md と docs/ai-collaboration.md のルールに従い、報告の最後に「Codexが使えなかったため、Claudeが代わりに実行」と書いてください。
+
+$prompt"
+
+if [ -s "$stdin_file" ]; then
+  claude "${claude_args[@]}" "$claude_prompt" < "$stdin_file"
+else
+  claude "${claude_args[@]}" "$claude_prompt" < /dev/null
+fi

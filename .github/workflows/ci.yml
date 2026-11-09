@@ -1,0 +1,32 @@
+# 自動チェック。すべての PR と main への push で動く。✗ の PR はマージしない（merge-gate が判定）。
+# ジョブ名 "check" は scripts/setup-github.sh で main の必須チェックに登録している。
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # ワークフローの YAML 検査に使う。
+      - run: pip install pyyaml
+
+      # 技術スタックを決めたら、ここに言語の準備（setup-node など）と依存のインストールを足す。
+
+      - name: scripts/check
+        run: scripts/check

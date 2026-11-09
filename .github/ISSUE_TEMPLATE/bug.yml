@@ -1,0 +1,15 @@
+name: 不具合
+description: 動かない・おかしいところ（agent ラベルで自動で直します）
+labels: ["agent", "bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 何が起きたか
+      description: どの画面で、何をしたら、どうなったか。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 本来どうなってほしいか

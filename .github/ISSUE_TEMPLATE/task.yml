@@ -1,0 +1,21 @@
+name: やりたいこと
+description: AI に任せたい機能追加・変更・不具合修正（agent ラベルで自動で進みます）
+labels: ["agent"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: やりたいこと
+      description: 誰が・何のために・何をできるようにしたいか。1〜3行で十分です。
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: 完了条件（わかれば）
+      description: 空でも構いません。spec スキルが受け入れ条件を書きます。
+  - type: textarea
+    id: notes
+    attributes:
+      label: 補足
+      description: 参考にしたい画面やリンク、気をつけてほしいこと。パスワード・個人情報は書かないでください。

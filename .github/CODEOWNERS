@@ -1,0 +1,11 @@
+# ここに載ったファイルを変える PR は、持ち主（人）の承認がないとマージできません
+# （scripts/setup-github.sh が main のルールで「Code Owner の承認必須」にします）。
+# 高リスクの変更（docs/risk-policy.md）を、AI の判定ミスだけに頼らず止めるためです。
+# 技術スタックを決めたら、stack-select がマイグレーション・認証・課金・インフラのパスを足します。
+
+# 安全装置そのもの
+/.github/                @gati-hxmx
+/.claude/settings.json   @gati-hxmx
+/.claude/hooks/          @gati-hxmx
+/docs/risk-policy.md     @gati-hxmx
+/scripts/setup-github.sh @gati-hxmx
