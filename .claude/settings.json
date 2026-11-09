@@ -1,6 +1,13 @@
 {
   "permissions": {
     "allow": [
+      "Edit",
+      "Write",
+      "MultiEdit",
+      "Skill",
+      "TodoWrite",
+      "WebSearch",
+      "WebFetch",
       "Bash(scripts/check)",
       "Bash(scripts/check:*)",
       "Bash(scripts/notify:*)",
@@ -19,7 +26,24 @@
       "Bash(gh issue:*)",
       "Bash(gh pr:*)",
       "Bash(gh run:*)",
-      "Bash(gh label list:*)"
+      "Bash(gh label:*)",
+      "Bash(gh repo view:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(chmod:*)",
+      "Bash(touch:*)",
+      "Bash(git branch:*)",
+      "Bash(git merge:*)",
+      "Bash(git show:*)",
+      "Bash(git rev-parse:*)"
     ],
     "deny": [
       "Read(./.env)",
