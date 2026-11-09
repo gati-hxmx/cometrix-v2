@@ -39,6 +39,12 @@ concurrency:
 
 env:
   DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+  # gh（Issue・PR へのコメントなど）が使うトークン
+  GH_TOKEN: ${{ github.token }}
+  # prompt で起動した claude-code-action は .claude/settings.json の allow を使わず、
+  # ここで渡したツールだけを許可する（docs: claude_args --allowedTools）。
+  # 危ない操作は .claude/settings.json の deny と hooks が引き続き止める。
+  CLAUDE_ALLOWED_TOOLS: "Edit,Write,MultiEdit,Read,Glob,Grep,Skill,TodoWrite,WebSearch,WebFetch,Bash(scripts/check),Bash(scripts/check:*),Bash(scripts/notify:*),Bash(scripts/ai:*),Bash(git:*),Bash(gh issue:*),Bash(gh pr:*),Bash(gh run:*),Bash(gh label:*),Bash(gh repo view:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(find:*),Bash(grep:*),Bash(mkdir:*),Bash(cp:*),Bash(mv:*),Bash(chmod:*),Bash(touch:*)"
 
 jobs:
   # Issue に agent ラベルが付いたら、triage から自走ワークフローを始める。
@@ -53,6 +59,7 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: --allowedTools "${{ env.CLAUDE_ALLOWED_TOOLS }}"
           # groom が起こした Issue（Claude の bot が付けた agent ラベル）でも始められるようにする。
           allowed_bots: claude
           prompt: |
@@ -60,6 +67,22 @@ jobs:
             triage スキルから始め、各スキルの「次に呼ぶスキル」に従って、PR の作成と別の AI へのレビュー依頼（ship）まで進めます。
             Issue に `codex` ラベルを付けた場合は、triage スキルのとおり Issue に `@codex` で作業を頼むコメントをして終えます（24時間たっても Codex の PR がなければ groom が Claude に引き継ぎます）。
             人に判断を仰ぐのは escalate スキルの条件に当てはまるときだけです。
+      - name: 権限で断られた操作（ツール名だけ）
+        if: always()
+        run: |
+          f="$RUNNER_TEMP/claude-execution-output.json"
+          [ -f "$f" ] || exit 0
+          python3 - "$f" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1]))
+          items = data if isinstance(data, list) else [data]
+          for m in items:
+              if isinstance(m, dict) and m.get("type") == "result":
+                  for d in m.get("permission_denials") or []:
+                      name = d.get("tool_name", "?")
+                      cmd = (d.get("tool_input") or {}).get("command", "")
+                      print(f"::warning::断られた操作: {name} {cmd.split()[0] if cmd else ''}")
+          PY
 
   # コメント・レビュー本文で @claude と呼ばれたとき、または Claude の PR にレビューが付いたとき。
   # Codex のレビュー（bot）にも反応できるよう、Codex の bot 名を許可する（リポジトリ変数 CODEX_BOT_LOGIN で変更可）。
@@ -78,11 +101,28 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: --allowedTools "${{ env.CLAUDE_ALLOWED_TOOLS }}"
           trigger_phrase: "@claude"
           allowed_bots: ${{ vars.CODEX_BOT_LOGIN || 'chatgpt-codex-connector' }}
           # 「 #」は YAML ではコメントの始まりになるので、式は折りたたみの書き方（>-）で渡す。
           prompt: >-
             ${{ github.event_name == 'pull_request_review' && startsWith(github.event.pull_request.head.ref, 'claude/') && format('PR #{0} にレビューが付きました。AGENTS.md に従い、必須の指摘があれば address スキル、なければ merge-gate スキルを使ってください。往復の回数（2回まで）を守ってください。', github.event.pull_request.number) || '' }}
+      - name: 権限で断られた操作（ツール名だけ）
+        if: always()
+        run: |
+          f="$RUNNER_TEMP/claude-execution-output.json"
+          [ -f "$f" ] || exit 0
+          python3 - "$f" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1]))
+          items = data if isinstance(data, list) else [data]
+          for m in items:
+              if isinstance(m, dict) and m.get("type") == "result":
+                  for d in m.get("permission_denials") or []:
+                      name = d.get("tool_name", "?")
+                      cmd = (d.get("tool_input") or {}).get("command", "")
+                      print(f"::warning::断られた操作: {name} {cmd.split()[0] if cmd else ''}")
+          PY
 
   # 作業ブランチの CI が失敗したら fix-ci。回数の上限（3回）は fix-ci スキルが守る。
   fix-ci:
@@ -101,6 +141,7 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: --allowedTools "${{ env.CLAUDE_ALLOWED_TOOLS }}"
           # 作業ブランチへの push は Claude の bot が行うので、その CI の失敗でも動けるようにする。
           allowed_bots: claude
           additional_permissions: |
@@ -109,6 +150,22 @@ jobs:
             ブランチ ${{ github.event.workflow_run.head_branch }} の CI が失敗しました（実行: ${{ github.event.workflow_run.html_url }}）。
             AGENTS.md に従い、fix-ci スキルで原因を再現して直し、同じブランチに push してください。
             この PR で fix-ci が3回続けて失敗している場合は、直さずに escalate スキルを使ってください。
+      - name: 権限で断られた操作（ツール名だけ）
+        if: always()
+        run: |
+          f="$RUNNER_TEMP/claude-execution-output.json"
+          [ -f "$f" ] || exit 0
+          python3 - "$f" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1]))
+          items = data if isinstance(data, list) else [data]
+          for m in items:
+              if isinstance(m, dict) and m.get("type") == "result":
+                  for d in m.get("permission_denials") or []:
+                      name = d.get("tool_name", "?")
+                      cmd = (d.get("tool_input") or {}).get("command", "")
+                      print(f"::warning::断られた操作: {name} {cmd.split()[0] if cmd else ''}")
+          PY
 
   # 定期実行：毎日 groom、毎週 retro。
   scheduled:
@@ -122,4 +179,21 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: --allowedTools "${{ env.CLAUDE_ALLOWED_TOOLS }}"
           prompt: ${{ (github.event.schedule == '0 23 * * 0' || inputs.task == 'retro') && 'AGENTS.md に従い、retro スキルで過去1週間を振り返り、改善 PR と週の報告を出してください。' || 'AGENTS.md に従い、groom スキルで保留中の Issue の再開とタスクの発掘をしてください。' }}
+      - name: 権限で断られた操作（ツール名だけ）
+        if: always()
+        run: |
+          f="$RUNNER_TEMP/claude-execution-output.json"
+          [ -f "$f" ] || exit 0
+          python3 - "$f" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1]))
+          items = data if isinstance(data, list) else [data]
+          for m in items:
+              if isinstance(m, dict) and m.get("type") == "result":
+                  for d in m.get("permission_denials") or []:
+                      name = d.get("tool_name", "?")
+                      cmd = (d.get("tool_input") or {}).get("command", "")
+                      print(f"::warning::断られた操作: {name} {cmd.split()[0] if cmd else ''}")
+          PY
