@@ -39,8 +39,6 @@ concurrency:
 
 env:
   DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-  # gh（Issue・PR へのコメントなど）が使うトークン
-  GH_TOKEN: ${{ github.token }}
   # prompt で起動した claude-code-action は .claude/settings.json の allow を使わず、
   # ここで渡したツールだけを許可する（docs: claude_args --allowedTools）。
   # 危ない操作は .claude/settings.json の deny と hooks が引き続き止める。
