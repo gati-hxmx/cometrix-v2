@@ -28,7 +28,7 @@ export function classifyYtDlpError(stderr: string): FailureCode {
   if (/sign in to confirm|not a bot|http error 429|too many requests|http error 403/.test(s))
     return "fetch_blocked";
   if (
-    /private video|video unavailable|has been removed|members-only|join this channel|this video is not available|account associated with this video has been terminated/.test(
+    /private video|video unavailable|video is unavailable|video is private|has been removed|members-only|join this channel|this video is not available|account associated with this video has been terminated/.test(
       s,
     )
   )

@@ -65,6 +65,9 @@ test("yt-dlp のエラーを失敗の種類に分ける", () => {
     "video_unavailable",
   );
   expect(classifyYtDlpError("ERROR: [youtube] x: Video unavailable")).toBe("video_unavailable");
+  expect(classifyYtDlpError("ERROR: [youtube] aaaaaaaaaaa: This video is unavailable")).toBe(
+    "video_unavailable",
+  );
   expect(
     classifyYtDlpError("WARNING: There are no subtitles for the requested languages: live_chat"),
   ).toBe("no_chat");
