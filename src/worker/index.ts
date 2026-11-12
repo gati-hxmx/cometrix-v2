@@ -1,15 +1,26 @@
-import { sql as dsql } from "drizzle-orm";
 import { connect } from "../db/client";
+import { fetchWithYtDlp } from "./fetch-chat";
 import { pickInterval } from "./interval";
+import { processNext, reapStale } from "./process";
 
-// 空のワーカー。ジョブ表を一定の間隔で見に行く。取得処理は #3 で作る。
+// ジョブ表を見に行き、queued を1件ずつ処理する。待ちがなければ間隔を延ばす。
 const { db } = connect();
 console.log("worker started");
 
 let idle = 0;
+let lastReap = 0;
 for (;;) {
-  const rows = await db.execute(dsql`select count(*)::int as n from jobs where status = 'queued'`);
-  const queued = Number((rows[0] as { n: number }).n);
-  idle = queued === 0 ? idle + 1 : 0;
+  try {
+    if (Date.now() - lastReap > 60_000) {
+      await reapStale(db);
+      lastReap = Date.now();
+    }
+    const worked = await processNext(db, fetchWithYtDlp);
+    idle = worked ? 0 : idle + 1;
+    if (worked) continue;
+  } catch (e) {
+    console.error("worker error", e);
+    idle += 1;
+  }
   await new Promise((r) => setTimeout(r, pickInterval(idle)));
 }
