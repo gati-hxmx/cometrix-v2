@@ -17,7 +17,12 @@ COPY --from=build /app/.next/static ./.next/static
 EXPOSE 3000
 CMD ["node", "server.js"]
 
-# ワーカー（yt-dlp などの取得ツールは #3 でここに足す）。マイグレーションもここから流せる。
+# ワーカー。取得に yt-dlp を使う（Twitch の取得ツールは #6 で足す）。マイグレーションもここから流せる。
 FROM base AS worker
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 ca-certificates curl \
+  && curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
+  && chmod +x /usr/local/bin/yt-dlp \
+  && rm -rf /var/lib/apt/lists/*
 COPY . .
 CMD ["npm", "run", "worker"]

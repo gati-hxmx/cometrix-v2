@@ -1,0 +1,7 @@
+{"replayChatItemAction":{"videoOffsetTimeMsec":"-5000","actions":[{"addChatItemAction":{"item":{"liveChatTextMessageRenderer":{"authorName":{"simpleText":"early"},"message":{"runs":[{"text":"開始前"}]}}}}}]}}
+{"replayChatItemAction":{"videoOffsetTimeMsec":"0","actions":[{"addChatItemAction":{"item":{"liveChatTextMessageRenderer":{"authorName":{"simpleText":"alice"},"message":{"runs":[{"text":"こんにちは"},{"emoji":{"shortcuts":[":smile:"]}}]}}}}}]}}
+{"replayChatItemAction":{"videoOffsetTimeMsec":"29999","actions":[{"addChatItemAction":{"item":{"liveChatTextMessageRenderer":{"authorName":{"simpleText":"bob"},"message":{"runs":[{"text":"w"}]}}}}}]}}
+{"replayChatItemAction":{"videoOffsetTimeMsec":"30000","actions":[{"addChatItemAction":{"item":{"liveChatPaidMessageRenderer":{"authorName":{"simpleText":"carol"}}}}}]}}
+{"replayChatItemAction":{"videoOffsetTimeMsec":"100000","actions":[{"addChatItemAction":{"item":{"liveChatTextMessageRenderer":{"authorName":{"simpleText":"dave"},"message":{"runs":[{"text":"late"}]}}}}},{"removeChatItemAction":{"targetItemId":"x"}}]}}
+{"replayChatItemAction":{"videoOffsetTimeMsec":"110000","actions":[{"markChatItemAsDeletedAction":{}}]}}
+not json
