@@ -15,6 +15,27 @@ export type ChatFetcher = (videoId: string, url: string) => Promise<FetchedChat>
 
 const TIMEOUT_MS = 10 * 60 * 1000;
 
+/**
+ * yt-dlp に渡す引数。`--print` は既定で `--simulate` を伴い字幕ファイルを書かないので、
+ * `--no-simulate` で書かせる（動画本体は `--skip-download` で落とさない）。
+ */
+export function ytDlpArgs(url: string, outBase: string): string[] {
+  return [
+    "--skip-download",
+    "--no-simulate",
+    "--write-subs",
+    "--sub-langs",
+    "live_chat",
+    "--no-playlist",
+    "--print",
+    "title",
+    "-o",
+    outBase,
+    "--",
+    url,
+  ];
+}
+
 /** yt-dlp でライブチャットのリプレイを取得する。URL は呼び出し側で検証・正規化済みであること。 */
 export const fetchWithYtDlp: ChatFetcher = async (_videoId, url) => {
   const dir = await mkdtemp(join(tmpdir(), "chat-"));
@@ -23,19 +44,7 @@ export const fetchWithYtDlp: ChatFetcher = async (_videoId, url) => {
     try {
       const res = await execFileAsync(
         process.env.YT_DLP_PATH ?? "yt-dlp",
-        [
-          "--skip-download",
-          "--write-subs",
-          "--sub-langs",
-          "live_chat",
-          "--no-playlist",
-          "--print",
-          "title",
-          "-o",
-          join(dir, "chat"),
-          "--",
-          url,
-        ],
+        ytDlpArgs(url, join(dir, "chat")),
         { timeout: TIMEOUT_MS, maxBuffer: 10 * 1024 * 1024 },
       );
       stdout = res.stdout;

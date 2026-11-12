@@ -4,6 +4,7 @@ import { bucketize, inVideo } from "../src/lib/buckets";
 import { parseVideoUrl } from "../src/lib/youtube-url";
 import { parseLiveChat } from "../src/worker/chat-parse";
 import { classifyYtDlpError } from "../src/worker/errors";
+import { ytDlpArgs } from "../src/worker/fetch-chat";
 
 const sample = readFileSync(new URL("./fixtures/live_chat.sample.jsonl", import.meta.url), "utf8");
 
@@ -83,4 +84,11 @@ test("yt-dlp のエラーを失敗の種類に分ける", () => {
       "WARNING: Unable to download live chat: <urlopen error [Errno 104] Connection reset>",
     ),
   ).toBe("fetch_failed");
+});
+
+test("yt-dlp は字幕ファイルを書く（--print があっても simulate にしない）", () => {
+  const args = ytDlpArgs("https://www.youtube.com/watch?v=aaaaaaaaaaa", "/tmp/x/chat");
+  expect(args).toContain("--no-simulate");
+  expect(args).toContain("--skip-download");
+  expect(args.slice(-2)).toEqual(["--", "https://www.youtube.com/watch?v=aaaaaaaaaaa"]);
 });
