@@ -1,0 +1,38 @@
+/* 色の変数は docs/design/colors.md のとおり。最初の見た目を選んだら（#2）値だけを替える。 */
+:root {
+  --bg: #faf6ef;
+  --surface: #ffffff;
+  --surface-2: #f3eee5;
+  --line: #ddd4c4;
+  --text: #1d2528;
+  --muted: #55636a;
+  --accent: #0b5d63;
+  --accent-dark: #074347;
+  --accent-weak: #e2efee;
+  --accent-line: #8bbcbf;
+  --sat: #1f5fa8;
+  --radius: 10px;
+  --warn: #7a4d00;
+  --warn-weak: #fff3d6;
+  --warn-line: #e6c777;
+  --danger: #a3261b;
+  --danger-weak: #fdecea;
+  --danger-line: #e5a39d;
+  --ok: #1d6b40;
+  --ok-weak: #e3f4ea;
+  --ok-line: #9fd1b3;
+  --chart-1: #78a8e8;
+  --chart-2: #80c8b8;
+  --chart-3: #f2b88e;
+  --chart-4: #bcc7d3;
+  --chart-minus: #a3261b;
+  --chart-1-weak: #dceafa;
+  --chart-1-text: #2c5a96;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+}

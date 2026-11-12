@@ -1,0 +1,43 @@
+# 手元の起動: docker compose up --build  →  http://localhost:3000
+# 秘密情報は入れない。ここの値は手元用の仮のもの。
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: cometrix
+      POSTGRES_PASSWORD: cometrix
+      POSTGRES_DB: cometrix
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cometrix"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build: { context: ., target: worker }
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      DATABASE_URL: postgres://cometrix:cometrix@db:5432/cometrix
+    depends_on:
+      db: { condition: service_healthy }
+
+  web:
+    build: { context: ., target: web }
+    environment:
+      DATABASE_URL: postgres://cometrix:cometrix@db:5432/cometrix
+    ports:
+      - "3000:3000"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  worker:
+    build: { context: ., target: worker }
+    environment:
+      DATABASE_URL: postgres://cometrix:cometrix@db:5432/cometrix
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+volumes:
+  db-data:

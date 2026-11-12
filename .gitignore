@@ -9,3 +9,5 @@ dist/
 build/
 coverage/
 .next/
+tsconfig.tsbuildinfo
+next-env.d.ts

@@ -44,4 +44,23 @@ stack-select スキルが次を行います。
 
 ## 4. 採用したスタック
 
-（このテンプレートから作ったリポジトリで、stack-select が書きます）
+確かめた日：2026-11-12（Issue #1）。有料のサービスは使いません。
+
+作るもの：YouTube／Twitch のアーカイブのチャットを取得し、コメント数の推移とチャット一覧を見せる Web アプリ（[#1](https://github.com/gati-hxmx/cometrix-v2/issues/1)）。当面はオーナーの Mac で動けばよく、いずれ画面・API・ワーカー・Postgres をすべて VPS に置きます。
+
+| 層 | 採用 | 標準との違いと理由 |
+| --- | --- | --- |
+| 言語 | TypeScript（画面・API・ワーカーすべて） | 標準どおり。取得は yt-dlp と TwitchDownloaderCLI を外部コマンドとして呼ぶだけなので、ワーカーを Python にする利点が小さく、1言語にそろえた |
+| フレームワーク | Next.js（画面と API）。ワーカーは同じリポジトリの別プロセス（`src/worker/`） | 標準どおり。数分かかる取得は画面と分け、ワーカーが動かす |
+| 実行環境 | Docker Compose（web・worker・db・migrate）。`docker compose up --build` で起動 | 標準の Vercel は使わない（オーナーの判断：VPS に置く）。同じコンテナをそのまま VPS に持っていける |
+| DB | Postgres 17（コンテナ） | Neon の代わり。PR ごとの DB ブランチは本番を作るとき（#12）まで後回し |
+| ジョブの受け渡し | Postgres の `jobs` 表（Redis は使わない） | 構成を増やさないため。分析結果も DB に保存する |
+| ORM | Drizzle | 標準どおり。マイグレーションは `drizzle/` に出す |
+| UI | 配色の変数は `src/app/globals.css` の `:root` | Tailwind・Lucide は最初の画面を決める（#2）ときに入れる |
+| テスト | Vitest | Playwright は最初の画面ができたときに足す |
+| Lint・整形 | Biome（対象は `src/`・`tests/`・ルートの設定ファイル） | 標準どおり。文書やスキルは整形しない |
+| CI | GitHub Actions で `scripts/check`（公開リポジトリなので無料） | |
+
+後回しにするもの（本番を作る #12 で決める）：ホスティング・PR ごとのプレビュー・段階公開とロールバック（`release.yml` は `AUTO_DEPLOY_ENABLED` を false のまま触らない）・Sentry・Discord 通知。
+
+主なコマンド：`scripts/check`（型チェック・Lint・テスト・ビルド）、`npm run dev`（画面だけ手元で）、`npm run db:generate`（スキーマからマイグレーションを作る）。

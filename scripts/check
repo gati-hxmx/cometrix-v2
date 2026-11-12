@@ -105,11 +105,13 @@ step "設定ファイルの JSON"
 python3 -m json.tool .claude/settings.json >/dev/null || { echo "  ✗ .claude/settings.json が JSON として読めません"; failed=1; }
 
 # --- プロジェクトの検証（技術スタックを決めたら書く） ---
-# 例（標準構成）:
-#   step "型チェック"; npm run typecheck || failed=1
-#   step "Lint";       npx biome check . || failed=1
-#   step "テスト";     npm test || failed=1
-#   step "ビルド";     npm run build || failed=1
+if [ ! -d node_modules ]; then
+  step "依存のインストール"; npm ci || failed=1
+fi
+step "型チェック"; npm run typecheck || failed=1
+step "Lint";       npm run lint || failed=1
+step "テスト";     npm test || failed=1
+step "ビルド";     npm run build || failed=1
 
 if [ "$failed" -ne 0 ]; then
   echo "✗ 検証に失敗しました"

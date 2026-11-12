@@ -1,0 +1,6 @@
+{
+  "files": {
+    "includes": ["src/**", "tests/**", "*.ts", "biome.json", "tsconfig.json", "package.json"]
+  },
+  "formatter": { "indentStyle": "space", "lineWidth": 100 }
+}
