@@ -1,4 +1,4 @@
-/* 色の変数は docs/design/colors.md のとおり。最初の見た目を選んだら（#2）値だけを替える。 */
+/* 色の変数は docs/design/colors.md のとおり。最初の見た目（#2）では標準の値がそのまま選ばれた。変えるときは値だけを替える。 */
 :root {
   --bg: #faf6ef;
   --surface: #ffffff;
