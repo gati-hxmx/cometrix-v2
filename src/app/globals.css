@@ -36,3 +36,16 @@ body {
   color: var(--text);
   font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
 }
+
+/* 分析画面：スマホは URL 入力欄を出さず、ヘッダーのロゴからトップへ戻る（docs/screens/analysis.md） */
+@media (max-width: 899px) {
+  .analysis-url {
+    display: none;
+  }
+}
+
+.yt-host iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
