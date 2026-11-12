@@ -89,6 +89,10 @@ test("yt-dlp のエラーを失敗の種類に分ける", () => {
 test("yt-dlp は字幕ファイルを書く（--print があっても simulate にしない）", () => {
   const args = ytDlpArgs("https://www.youtube.com/watch?v=aaaaaaaaaaa", "/tmp/x/chat");
   expect(args).toContain("--no-simulate");
+  expect(args.slice(args.indexOf("--js-runtimes"), args.indexOf("--js-runtimes") + 2)).toEqual([
+    "--js-runtimes",
+    "node",
+  ]);
   expect(args).toContain("--skip-download");
   expect(args.slice(-2)).toEqual(["--", "https://www.youtube.com/watch?v=aaaaaaaaaaa"]);
 });

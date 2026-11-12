@@ -23,6 +23,9 @@ export function ytDlpArgs(url: string, outBase: string): string[] {
   return [
     "--skip-download",
     "--no-simulate",
+    // YouTube の JavaScript の確認を解くのに JS の実行環境が要る。イメージには Node があるので有効にする（Deno は既定で有効、Node は指定が要る）。
+    "--js-runtimes",
+    "node",
     "--write-subs",
     "--sub-langs",
     "live_chat",
