@@ -1,15 +1,15 @@
-/* 色の変数は docs/design/colors.md のとおり。最初の見た目（#2）では標準の値がそのまま選ばれた。変えるときは値だけを替える。 */
+/* 色の変数は docs/design/colors.md のとおり。最初の見た目（#2）でオーナーが青の配色を選んだ。変えるときは値だけを替える。 */
 :root {
-  --bg: #faf6ef;
+  --bg: #f6f8fb;
   --surface: #ffffff;
-  --surface-2: #f3eee5;
-  --line: #ddd4c4;
-  --text: #1d2528;
-  --muted: #55636a;
-  --accent: #0b5d63;
-  --accent-dark: #074347;
-  --accent-weak: #e2efee;
-  --accent-line: #8bbcbf;
+  --surface-2: #eef2f7;
+  --line: #d5dde8;
+  --text: #1b2430;
+  --muted: #566373;
+  --accent: #2c5a96;
+  --accent-dark: #1f4372;
+  --accent-weak: #e3ecf7;
+  --accent-line: #9db7da;
   --sat: #1f5fa8;
   --radius: 10px;
   --warn: #7a4d00;
