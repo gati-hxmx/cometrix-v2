@@ -42,7 +42,7 @@ env:
   # prompt で起動した claude-code-action は .claude/settings.json の allow を使わず、
   # ここで渡したツールだけを許可する（docs: claude_args --allowedTools）。
   # 危ない操作は .claude/settings.json の deny と hooks が引き続き止める。
-  CLAUDE_ALLOWED_TOOLS: "Edit,Write,MultiEdit,Read,Glob,Grep,Skill,TodoWrite,WebSearch,WebFetch,Bash(scripts/check),Bash(scripts/check:*),Bash(scripts/notify:*),Bash(scripts/ai:*),Bash(git:*),Bash(gh issue:*),Bash(gh pr:*),Bash(gh run:*),Bash(gh label:*),Bash(gh repo view:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(find:*),Bash(grep:*),Bash(mkdir:*),Bash(cp:*),Bash(mv:*),Bash(chmod:*),Bash(touch:*)"
+  CLAUDE_ALLOWED_TOOLS: "Edit,Write,MultiEdit,Read,Glob,Grep,Skill,TodoWrite,WebSearch,WebFetch,Bash(scripts/check),Bash(scripts/check:*),Bash(scripts/notify:*),Bash(scripts/ai:*),Bash(git:*),Bash(gh issue:*),Bash(gh pr:*),Bash(gh run:*),Bash(gh label:*),Bash(gh repo view:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(find:*),Bash(grep:*),Bash(mkdir:*),Bash(cp:*),Bash(mv:*),Bash(chmod:*),Bash(touch:*),Bash(cd:*),Bash(pwd),Bash(node:*),Bash(npm:*),Bash(npx:*),Bash(pnpm:*),Bash(python3:*),Bash(pip:*),Bash(pip3:*),Bash(docker:*)"
 
 jobs:
   # Issue に agent ラベルが付いたら、triage から自走ワークフローを始める。
