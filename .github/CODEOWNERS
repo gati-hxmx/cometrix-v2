@@ -1,7 +1,7 @@
 # ここに載ったファイルを変える PR は、持ち主（人）の承認がないとマージできません
 # （scripts/setup-github.sh が main のルールで「Code Owner の承認必須」にします）。
 # 高リスクの変更（docs/risk-policy.md）を、AI の判定ミスだけに頼らず止めるためです。
-# 技術スタックを決めたら、stack-select がマイグレーション・認証・課金・インフラのパスを足します。
+# GitHub はこの .github/CODEOWNERS を使います（ルート直下の CODEOWNERS は使われません）。
 
 # 安全装置そのもの
 /.github/                @gati-hxmx
@@ -9,3 +9,16 @@
 /.claude/hooks/          @gati-hxmx
 /docs/risk-policy.md     @gati-hxmx
 /scripts/setup-github.sh @gati-hxmx
+
+# DB のスキーマとマイグレーション
+/src/db/                 @gati-hxmx
+/drizzle/                @gati-hxmx
+/drizzle.config.ts       @gati-hxmx
+
+# インフラ（コンテナ・起動の構成）
+/Dockerfile              @gati-hxmx
+/compose.yaml            @gati-hxmx
+
+# 認証・課金（#7・#9 で作ったときに中身が入る）
+/src/auth/               @gati-hxmx
+/src/billing/            @gati-hxmx
