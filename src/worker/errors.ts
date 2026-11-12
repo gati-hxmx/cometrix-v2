@@ -33,6 +33,13 @@ export function classifyYtDlpError(stderr: string): FailureCode {
     )
   )
     return "video_unavailable";
-  if (/no subtitles|live_chat|live chat/.test(s)) return "no_chat";
+  // 「チャットがない」とはっきり書かれたときだけ no_chat。live_chat の取得中の
+  // 一時的な失敗（5xx・通信エラー）にも "live_chat" の字が出るので、それは fetch_failed にする。
+  if (
+    /there are no subtitles|no subtitles for the requested|live chat replay is (?:not available|disabled)|chat is disabled for this live stream/.test(
+      s,
+    )
+  )
+    return "no_chat";
   return "fetch_failed";
 }

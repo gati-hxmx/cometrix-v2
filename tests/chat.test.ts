@@ -72,4 +72,15 @@ test("yt-dlp のエラーを失敗の種類に分ける", () => {
     classifyYtDlpError("WARNING: There are no subtitles for the requested languages: live_chat"),
   ).toBe("no_chat");
   expect(classifyYtDlpError("something odd")).toBe("fetch_failed");
+  // live_chat の取得中の一時的な失敗は「チャットなし」ではない
+  expect(
+    classifyYtDlpError(
+      "ERROR: Unable to download live_chat subtitles: HTTP Error 503: Service Unavailable",
+    ),
+  ).toBe("fetch_failed");
+  expect(
+    classifyYtDlpError(
+      "WARNING: Unable to download live chat: <urlopen error [Errno 104] Connection reset>",
+    ),
+  ).toBe("fetch_failed");
 });
