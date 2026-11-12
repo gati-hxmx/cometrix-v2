@@ -9,7 +9,7 @@ import { chatBuckets, chatMessages, jobs } from "../src/db/schema";
 import { enqueue } from "../src/lib/jobs";
 import { parseLiveChat } from "../src/worker/chat-parse";
 import { JobFailure } from "../src/worker/errors";
-import { claimJob, processNext, reapStale } from "../src/worker/process";
+import { claimJob, processNext, reapStale, runJob } from "../src/worker/process";
 
 // Postgres が要るテスト。TEST_DATABASE_URL があるときだけ動かす（scripts/check の CI では compose の db を使う）。
 const url = process.env.TEST_DATABASE_URL;
@@ -140,5 +140,25 @@ describe.skipIf(!url)("ジョブ処理（Postgres）", () => {
     expect(rows.stale000002.status).toBe("failed");
     expect((rows.stale000002.error as { code: string }).code).toBe("fetch_failed");
     expect(rows.fresh000001.status).toBe("running");
+  });
+  test("回収されて別のワーカーが拾ったジョブは、元のワーカーが上書きしない", async () => {
+    const res = await enqueue(db, A);
+    if (!res.ok) throw new Error("enqueue failed");
+    const stale = await claimJob(db);
+    if (!stale) throw new Error("claim failed");
+    // 止まったとみなして回収し、別のワーカーが拾って終える
+    await db.update(jobs).set({ status: "queued" }).where(eq(jobs.id, res.id));
+    const fresh = await claimJob(db);
+    if (!fresh) throw new Error("claim failed");
+    await runJob(db, fresh, ok);
+    // 元のワーカーが遅れて終わっても、結果も状態も変わらない
+    await runJob(db, stale, async () => ({ title: "古い結果", messages: parseLiveChat(sample) }));
+    await runJob(db, stale, async () => ({ title: "x", messages: [] }));
+    const [job] = await db.select().from(jobs).where(eq(jobs.id, res.id));
+    expect(job.status).toBe("done");
+    expect((job.result as { title: string }).title).toBe("テスト配信");
+    expect(await db.select().from(chatMessages).where(eq(chatMessages.jobId, res.id))).toHaveLength(
+      4,
+    );
   });
 });
