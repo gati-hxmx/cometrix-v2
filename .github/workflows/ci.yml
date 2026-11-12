@@ -26,7 +26,11 @@ jobs:
       # ワークフローの YAML 検査に使う。
       - run: pip install pyyaml
 
-      # 技術スタックを決めたら、ここに言語の準備（setup-node など）と依存のインストールを足す。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
 
       - name: scripts/check
         run: scripts/check
