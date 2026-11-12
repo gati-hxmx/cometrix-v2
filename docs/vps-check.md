@@ -5,15 +5,15 @@ YouTube はクラウドや VPS の IP からの取得を止めることがあり
 ## 手順
 
 1. VPS で、取得に使う公開のアーカイブ（チャットのリプレイが有効なライブ配信）の URL を決める。
-2. ワーカーのイメージで yt-dlp を直接動かす。
+2. ワーカーのイメージで yt-dlp を直接動かす（`--print` は既定で simulate になりファイルを書かないので、`--no-simulate` を付ける）。
 
    ```sh
    docker compose build worker
    docker compose run --rm --no-deps worker \
-     yt-dlp --skip-download --write-subs --sub-langs live_chat --print title -o /tmp/chat -- "<URL>"
+     yt-dlp --skip-download --no-simulate --write-subs --sub-langs live_chat --print title -o /tmp/chat -- "<URL>"
    ```
 
-3. 成功なら `/tmp/chat.live_chat.json` ができる。`fetch_blocked` の表示（`Sign in to confirm you're not a bot`・HTTP 429）が出たら止められている。
+3. 成功なら、同じコンテナの中に `/tmp/chat.live_chat.json` ができる（`--rm` なので中身を見るときは `sh -c "yt-dlp ... && ls -l /tmp/chat.live_chat.json"` のように同じ実行の中で確かめる）。`fetch_blocked` の表示（`Sign in to confirm you're not a bot`・HTTP 429）が出たら止められている。
 4. アプリ経由でも確かめる。
 
    ```sh
