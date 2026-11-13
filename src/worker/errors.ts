@@ -6,10 +6,13 @@ export type FailureCode =
   | "fetch_failed";
 
 export const FAILURE_MESSAGES: Record<FailureCode, string> = {
-  invalid_url: "URL が正しくありません。YouTube の動画の URL を入れてください。",
+  invalid_url:
+    "URL が正しくありません。YouTube の配信アーカイブか、Twitch のアーカイブ（twitch.tv/videos/…）の URL を入れてください。",
   no_chat: "この動画にはチャットがありません（チャットのリプレイが無効か、コメントが0件です）。",
-  video_unavailable: "動画を取得できません（非公開・削除・メンバー限定の可能性があります）。",
-  fetch_blocked: "YouTube に取得を止められました。時間をおくか、別のネットワークで試してください。",
+  video_unavailable:
+    "動画を取得できません（非公開・削除・メンバー限定・サブスクライバー限定の可能性があります）。",
+  fetch_blocked:
+    "配信元（YouTube／Twitch）に取得を止められました。時間をおくか、別のネットワークで試してください。",
   fetch_failed: "チャットの取得に失敗しました。",
 };
 

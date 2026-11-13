@@ -15,6 +15,13 @@
       "when": 1794505672688,
       "tag": "0001_light_ezekiel",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794542734679,
+      "tag": "0002_platform",
+      "breakpoints": true
     }
   ]
 }
