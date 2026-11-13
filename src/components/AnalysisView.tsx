@@ -5,6 +5,7 @@ import type { Bucket } from "../lib/chart";
 import { EMPTY_FILTER, filterParams, isFiltering } from "../lib/chat-filter";
 import { BucketChart } from "./BucketChart";
 import { ChatList, type Filter } from "./ChatList";
+import { MemoPanel } from "./MemoPanel";
 import { PlaybackBar } from "./PlaybackBar";
 import { Toast } from "./Toast";
 import { TwitchPlayer } from "./TwitchPlayer";
@@ -56,6 +57,7 @@ export function AnalysisView({ id }: { id: string }) {
   const playerBox = useRef<HTMLDivElement>(null);
   const closeToast = useCallback(() => setToast(null), []);
   const [filter, setFilter] = useState<Filter>(EMPTY_FILTER);
+  const [tab, setTab] = useState<"chat" | "memo">("chat");
   const [filtered, setFiltered] = useState<Bucket[] | null>(null);
   const onFilter = useCallback((f: Filter) => setFilter(f), []);
   const getTime = useCallback(() => player.current?.getTime() ?? 0, []);
@@ -254,13 +256,68 @@ export function AnalysisView({ id }: { id: string }) {
           </div>
           {done?.result && (
             <aside className="analysis-chat" style={{ ...card, marginTop: 16 }}>
-              <ChatList
-                jobId={id}
-                getTime={getTime}
-                onSeek={seek}
-                onFilter={onFilter}
-                onError={setToast}
-              />
+              <div
+                role="tablist"
+                aria-label="チャットとメモ"
+                style={{ display: "flex", gap: 8, marginBottom: 12 }}
+              >
+                {(["chat", "memo"] as const).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    role="tab"
+                    id={`tab-${k}`}
+                    aria-selected={tab === k}
+                    aria-controls={`panel-${k}`}
+                    tabIndex={tab === k ? 0 : -1}
+                    onClick={() => setTab(k)}
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+                        const next = k === "chat" ? "memo" : "chat";
+                        setTab(next);
+                        document.getElementById(`tab-${next}`)?.focus();
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      minHeight: 44,
+                      font: "inherit",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      borderRadius: "var(--radius)",
+                      border: `1px solid ${tab === k ? "var(--accent-line)" : "var(--line)"}`,
+                      background: tab === k ? "var(--accent-weak)" : "var(--surface)",
+                      color: tab === k ? "var(--accent-dark)" : "var(--text)",
+                    }}
+                  >
+                    {k === "chat" ? "チャット" : "メモ"}
+                  </button>
+                ))}
+              </div>
+              <div
+                role="tabpanel"
+                id="panel-chat"
+                aria-labelledby="tab-chat"
+                className="chat-list-wrap"
+                hidden={tab !== "chat"}
+              >
+                <ChatList
+                  jobId={id}
+                  getTime={getTime}
+                  onSeek={seek}
+                  onFilter={onFilter}
+                  onError={setToast}
+                />
+              </div>
+              <div
+                role="tabpanel"
+                id="panel-memo"
+                aria-labelledby="tab-memo"
+                className="chat-list-wrap"
+                hidden={tab !== "memo"}
+              >
+                <MemoPanel jobId={id} getTime={getTime} onSeek={seek} onError={setToast} />
+              </div>
             </aside>
           )}
         </div>

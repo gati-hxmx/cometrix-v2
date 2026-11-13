@@ -61,6 +61,15 @@ body {
   min-height: 0;
   flex: 1;
 }
+.chat-list-wrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.chat-list-wrap[hidden] {
+  display: none;
+}
 .chat-scroll {
   max-height: 60vh;
 }
