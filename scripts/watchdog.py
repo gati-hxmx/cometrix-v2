@@ -160,7 +160,7 @@ def gh(*args: str, token: str | None = None, check: bool = True) -> str:
         env["GH_TOKEN"] = token
     out = subprocess.run(["gh", *args], capture_output=True, text=True, env=env, check=False)
     if check and out.returncode != 0:
-        raise RuntimeError(f"gh {' '.join(args)}: {out.stderr.strip()}")
+        raise RuntimeError(f"gh {' '.join(args[:2])}: {out.stderr.strip()}")
     return out.stdout
 
 
@@ -175,6 +175,65 @@ def get_all(path: str) -> list:
 
 def comment(repo: str, number: int, body: str, token: str | None = None) -> None:
     gh("api", f"repos/{repo}/issues/{number}/comments", "-f", f"body={body}", token=token)
+
+
+def handle_pr(repo, server, pr, now, codex, token, busy, all_busy, act):
+    """1つの PR を確かめて、必要なら再開する。使えなかったトークンは None にして返す。"""
+    ref = pr["head"]["ref"]
+    labels = {lb["name"] for lb in pr.get("labels", [])}
+    if not ref.startswith("claude/") or pr.get("draft") or pr.get("auto_merge") or labels & SKIP_LABELS:
+        return token
+    n = pr["number"]
+    commit = get(f"repos/{repo}/commits/{pr['head']['sha']}")
+    head_time = ts(commit["commit"]["committer"]["date"])
+    comments = get_all(f"repos/{repo}/issues/{n}/comments?per_page=100")
+    reactions = get_all(f"repos/{repo}/issues/{n}/reactions?per_page=100")
+    # Codex は @codex review のコメント自体に 👀・👍 を付けることもある
+    for c in request_comments(comments, head_time):
+        reactions += get_all(f"repos/{repo}/issues/comments/{c['id']}/reactions?per_page=100")
+    state = build_state(
+        pr,
+        head_time=head_time,
+        comments=comments,
+        reviews=get_all(f"repos/{repo}/pulls/{n}/reviews?per_page=100"),
+        reactions=reactions,
+        codex=codex,
+        agent_running=all_busy or ref in busy,
+    )
+    url = f"{server}/{repo}/pull/{n}"
+    action = decide(state, now, has_token=bool(token))
+
+    if action == "request-codex":
+        mark = f"<!-- watchdog:{action} sha={state.head_sha} -->"
+        body = (f"@codex review\n\n上のコメントの依頼（仕様・画面の確認など）もあわせてお願いします。\n\n"
+                f"_自動の見張り：レビューが{IDLE.seconds // 60}分以上始まらなかったため頼み直しました。_\n{mark}")
+        try:
+            act(f"PR #{n}: Codex にレビューを頼み直す", lambda: comment(repo, n, body, token=token))
+            return token
+        except RuntimeError as e:
+            # 期限切れ・権限不足のトークン。この回はトークンなしとして Claude の代行に進む
+            print(f"::warning::CODEX_REQUEST_TOKEN で頼み直せませんでした（期限切れ・権限不足かもしれません）: {e}")
+            token = None
+            action = decide(state, now, has_token=False)
+
+    mark = f"<!-- watchdog:{action} sha={state.head_sha} -->"
+    if action in ("claude-review", "advance"):
+        why = ("Codex のレビューが始まらないため、Claude が代わりにレビューします。"
+               if action == "claude-review" else
+               f"レビューのあと{IDLE.seconds // 60}分以上動きがないため、Claude が次の工程から再開します。")
+        def run_agent():
+            comment(repo, n, f"_自動の見張り：{why}_\n{mark}")
+            gh("workflow", "run", "agent.yml", "-R", repo, "-f", f"task={action}", "-f", f"pr={n}")
+        act(f"PR #{n}: {action}", run_agent)
+    elif action == "notify":
+        def notify():
+            sent = subprocess.run(
+                ["scripts/notify", f"自走が止まっています（自動の再開でも進みません）: PR #{n} {url}"], check=False)
+            # 送れたときだけ記録する。送れなければ次の見張りでもう一度送る
+            if sent.returncode == 0:
+                comment(repo, n, f"_自動の見張り：自動で再開しても進まないため、人に知らせました。_\n{mark}")
+        act(f"PR #{n}: 通知", notify)
+    return token
 
 
 def main() -> int:
@@ -207,51 +266,12 @@ def main() -> int:
                 lambda run=run: subprocess.run(
                     ["scripts/notify", f"Agent の実行が再実行しても失敗しました: {run['html_url']}"], check=False))
 
-    # 1. 止まった PR を進める
+    # 1. 止まった PR を進める（1つの PR で失敗しても、ほかの PR は続ける）
     for pr in get_all(f"repos/{repo}/pulls?state=open&per_page=100"):
-        ref = pr["head"]["ref"]
-        labels = {lb["name"] for lb in pr.get("labels", [])}
-        if not ref.startswith("claude/") or pr.get("draft") or pr.get("auto_merge") or labels & SKIP_LABELS:
-            continue
-        n = pr["number"]
-        commit = get(f"repos/{repo}/commits/{pr['head']['sha']}")
-        head_time = ts(commit["commit"]["committer"]["date"])
-        comments = get_all(f"repos/{repo}/issues/{n}/comments?per_page=100")
-        reactions = get_all(f"repos/{repo}/issues/{n}/reactions?per_page=100")
-        # Codex は @codex review のコメント自体に 👀・👍 を付けることもある
-        for c in request_comments(comments, head_time):
-            reactions += get_all(f"repos/{repo}/issues/comments/{c['id']}/reactions?per_page=100")
-        state = build_state(
-            pr,
-            head_time=head_time,
-            comments=comments,
-            reviews=get_all(f"repos/{repo}/pulls/{n}/reviews?per_page=100"),
-            reactions=reactions,
-            codex=codex,
-            agent_running=all_busy or ref in busy,
-        )
-        action = decide(state, now, has_token=bool(token))
-        if action is None:
-            continue
-        mark = f"<!-- watchdog:{action} sha={state.head_sha} -->"
-        url = f"{server}/{repo}/pull/{n}"
-        if action == "request-codex":
-            body = (f"@codex review\n\n上のコメントの依頼（仕様・画面の確認など）もあわせてお願いします。\n\n"
-                    f"_自動の見張り：レビューが{IDLE.seconds // 60}分以上始まらなかったため頼み直しました。_\n{mark}")
-            act(f"PR #{n}: Codex にレビューを頼み直す", lambda n=n, body=body: comment(repo, n, body, token=token))
-        elif action in ("claude-review", "advance"):
-            why = ("Codex のレビューが始まらないため、Claude が代わりにレビューします。"
-                   if action == "claude-review" else
-                   f"レビューのあと{IDLE.seconds // 60}分以上動きがないため、Claude が次の工程から再開します。")
-            def run_agent(action=action, why=why, mark=mark, n=n):
-                comment(repo, n, f"_自動の見張り：{why}_\n{mark}")
-                gh("workflow", "run", "agent.yml", "-R", repo, "-f", f"task={action}", "-f", f"pr={n}")
-            act(f"PR #{n}: {action}", run_agent)
-        elif action == "notify":
-            def notify(mark=mark, n=n, url=url):
-                comment(repo, n, f"_自動の見張り：自動で再開しても進まないため、人に知らせました。_\n{mark}")
-                subprocess.run(["scripts/notify", f"自走が止まっています（自動の再開でも進みません）: PR #{n} {url}"], check=False)
-            act(f"PR #{n}: 通知", notify)
+        try:
+            token = handle_pr(repo, server, pr, now, codex, token, busy, all_busy, act)
+        except (RuntimeError, KeyError, ValueError) as e:
+            print(f"::warning::PR #{pr.get('number')} の確認に失敗しました: {e}")
     return 0
 
 
