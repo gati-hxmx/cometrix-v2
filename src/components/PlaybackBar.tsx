@@ -99,6 +99,8 @@ export function PlaybackBar({
               textAlign: "center",
               border: `1px solid ${step === null ? "var(--danger-line)" : "var(--line)"}`,
               borderRadius: "var(--radius)",
+              background: "var(--surface)",
+              color: "var(--text)",
               font: "inherit",
             }}
           />
