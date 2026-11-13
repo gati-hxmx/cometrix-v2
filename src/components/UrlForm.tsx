@@ -82,7 +82,7 @@ export function UrlForm({ autoFocus = false }: { autoFocus?: boolean }) {
             border: 0,
             borderRadius: "var(--radius)",
             background: "var(--accent)",
-            color: "#fff",
+            color: "var(--on-accent)",
             fontSize: 16,
             opacity: canSubmit || busy ? 1 : 0.5,
             cursor: canSubmit ? "pointer" : "not-allowed",

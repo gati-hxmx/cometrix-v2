@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   clampRange,
   MIN_RANGE,
+  maxTickCount,
   panRange,
   revealIndex,
   snapRange,
@@ -89,5 +90,22 @@ describe("snapRange", () => {
     expect(Number.isInteger(r.start) && Number.isInteger(r.end)).toBe(true);
     const p = snapRange(panRange(r, 60, 3.3), 60);
     expect(Number.isInteger(p.start) && Number.isInteger(p.end)).toBe(true);
+  });
+});
+
+describe("横軸の目盛りの本数（#28）", () => {
+  it("狭い幅では本数を減らし、PC は最大10本", () => {
+    expect(maxTickCount(290)).toBe(3);
+    expect(maxTickCount(100)).toBe(2);
+    expect(maxTickCount(900)).toBe(10);
+    expect(maxTickCount(0)).toBe(10);
+  });
+  it("隣の目盛りとの間隔が 80px を下回らない", () => {
+    for (const w of [200, 290, 500, 800]) {
+      for (const span of [600, 3600, 7200, 36000]) {
+        const t = timeTicks(0, span, maxTickCount(w));
+        if (t.length >= 2) expect(((t[1] - t[0]) / span) * w).toBeGreaterThanOrEqual(80);
+      }
+    }
   });
 });

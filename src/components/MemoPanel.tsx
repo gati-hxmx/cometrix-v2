@@ -99,6 +99,8 @@ export function MemoPanel({
           padding: 12,
           border: "1px solid var(--line)",
           borderRadius: "var(--radius)",
+          background: "var(--surface)",
+          color: "var(--text)",
           font: "inherit",
           boxSizing: "border-box",
         }}
