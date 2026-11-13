@@ -88,7 +88,7 @@ flowchart LR
 | --- | --- |
 | Claude の PR で、Codex のレビューが30分以上始まらない（Codex は bot の `@codex review` に反応しない） | 人のトークン（Secret `CODEX_REQUEST_TOKEN`）で `@codex review` を頼み直す。2回で始まらなければ、Claude が代わりにレビューして進める |
 | レビューは終わったのに、30分以上次へ進まない（指摘なしで 👍 だけのときなど） | Claude に address か merge-gate で進めてもらう（2回まで） |
-| Agent の実行がエラーや時間切れで終わった | 30分おいて1回だけ再実行する |
+| Agent の実行がエラーや時間切れで終わった | 30分おいて1回だけ再実行する。それでも失敗したら Discord に知らせる |
 | 上のどれでも進まない | Discord に1回だけ知らせる |
 
 - `needs-human`・`blocked` のラベルが付いた PR、下書きの PR、自動マージ待ちの PR は触りません。
