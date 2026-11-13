@@ -165,7 +165,7 @@ const input = {
 
 /**
  * チャット一覧（絞り込み欄つき）。再生位置に近いコメントを出して追従する。
- * 絞り込み（300ms 待ち）は onFilter でグラフ側にも渡す。
+ * 絞り込み（語を追加・削除したとき）は onFilter でグラフ側にも渡す。
  */
 export function ChatList({
   jobId,
