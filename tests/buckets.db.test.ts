@@ -52,3 +52,38 @@ describe.skipIf(!url)("GET /api/jobs/:id/buckets（Postgres）", () => {
     expect((await call("abc")).status).toBe(404);
   });
 });
+
+describe.skipIf(!url)("GET /api/jobs/:id（Postgres）", () => {
+  const sql = postgres(url ?? "postgres://invalid", { max: 3 });
+  const db = drizzle(sql, { schema });
+  let GET: typeof import("../src/app/api/jobs/[id]/route").GET;
+
+  beforeAll(async () => {
+    process.env.DATABASE_URL = url;
+    await migrate(db, { migrationsFolder: "./drizzle" });
+    ({ GET } = await import("../src/app/api/jobs/[id]/route"));
+  });
+  afterAll(async () => {
+    await sql.end();
+  });
+
+  test("チャットがなく失敗したジョブでも、動画を出せるよう videoId を返す", async () => {
+    await db.delete(jobs);
+    const [job] = await db
+      .insert(jobs)
+      .values({
+        url: "u",
+        videoId: "ccccccccccc",
+        status: "failed",
+        error: { code: "no_chat", message: "m" },
+      })
+      .returning({ id: jobs.id });
+    const res = await GET(new Request("http://x"), { params: Promise.resolve({ id: job.id }) });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      status: "failed",
+      videoId: "ccccccccccc",
+      error: { code: "no_chat" },
+    });
+  });
+});

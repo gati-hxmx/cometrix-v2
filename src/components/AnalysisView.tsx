@@ -9,6 +9,7 @@ import { type PlayerHandle, YoutubePlayer } from "./YoutubePlayer";
 
 type Job = {
   status: "queued" | "running" | "done" | "failed";
+  videoId?: string | null;
   result?: { videoId: string; title: string; totalComments: number } | null;
   error?: { code: string; message: string } | null;
 };
@@ -98,6 +99,9 @@ export function AnalysisView({ id }: { id: string }) {
   const job = state.kind === "job" ? state.job : null;
   const done = job?.status === "done" && job.result ? job : null;
   const waiting = !job || job.status === "queued" || job.status === "running";
+  // チャットがない動画（#3 では no_chat の失敗）でも、動画は再生できるようにする。
+  const noChatVideo =
+    job?.status === "failed" && job.error?.code === "no_chat" && job.videoId ? job.videoId : null;
 
   return (
     <main className="analysis" style={{ maxWidth: 860, margin: "0 auto", padding: "16px" }}>
@@ -115,6 +119,18 @@ export function AnalysisView({ id }: { id: string }) {
             別の URL で分析し直す
           </Link>
         </div>
+      )}
+
+      {noChatVideo && (
+        <>
+          <div ref={playerBox} style={{ marginTop: 16, scrollMarginTop: 8 }}>
+            <YoutubePlayer ref={player} videoId={noChatVideo} />
+          </div>
+          <section style={{ ...card, marginTop: 16 }}>
+            <h2 style={{ fontSize: 16, margin: "0 0 8px" }}>コメント数（30秒ごと）</h2>
+            <BucketChart buckets={[]} onSeek={seek} />
+          </section>
+        </>
       )}
 
       {job?.status !== "failed" && (
