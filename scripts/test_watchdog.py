@@ -88,6 +88,14 @@ class DecideTest(unittest.TestCase):
         self.assertIsNone(w.decide(state(running=True), T0 + timedelta(hours=3), has_token=True))
 
 
+class OpenedLaterTest(unittest.TestCase):
+    def test_waits_from_pr_creation_when_opened_after_commit(self):
+        late = dict(pr(), created_at=at(60))
+        s = w.build_state(late, T0, [], [], [], CODEX, False)
+        self.assertIsNone(w.decide(s, T0 + timedelta(minutes=70), has_token=True))
+        self.assertEqual(w.decide(s, T0 + timedelta(minutes=91), has_token=True), "request-codex")
+
+
 class RequestCommentsTest(unittest.TestCase):
     def test_only_requests_after_head_commit(self):
         comments = [{"id": 1, "created_at": at(-5), "body": "@codex review"},

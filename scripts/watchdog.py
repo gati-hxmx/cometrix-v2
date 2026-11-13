@@ -115,8 +115,10 @@ def is_login(user: dict | None, login: str) -> bool:
 def build_state(pr: dict, head_time: datetime, comments: list, reviews: list, reactions: list,
                 codex: str, agent_running: bool) -> PrState:
     sha = pr["head"]["sha"]
+    # PR がコミットよりあとに開かれたときは、開いた時刻から待つ
+    opened = ts(pr.get("created_at")) or head_time
     state = PrState(number=pr["number"], head_sha=sha, head_time=head_time,
-                    last_activity=head_time, agent_running=agent_running)
+                    last_activity=max(head_time, opened), agent_running=agent_running)
 
     def done(at: datetime | None) -> None:
         if at and at >= head_time and (state.codex_done_at is None or at < state.codex_done_at):
