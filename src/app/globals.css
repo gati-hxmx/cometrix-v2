@@ -49,3 +49,34 @@ body {
   height: 100%;
   border: 0;
 }
+
+/* 分析画面：PC は左に動画とグラフ、右にチャット一覧（docs/screens/analysis.md）。スマホは1列 */
+.analysis-chat {
+  display: flex;
+  flex-direction: column;
+}
+.analysis-chat .chat-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.chat-scroll {
+  max-height: 60vh;
+}
+@media (min-width: 1024px) {
+  .analysis-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 16px;
+    align-items: start;
+  }
+  .analysis-chat {
+    position: sticky;
+    top: 16px;
+    height: calc(100vh - 32px);
+  }
+  .chat-scroll {
+    max-height: none;
+  }
+}

@@ -5,6 +5,7 @@ import { formatTime } from "../lib/chart";
 type YTPlayer = {
   seekTo(sec: number, allowSeekAhead: boolean): void;
   playVideo(): void;
+  getCurrentTime(): number;
   destroy(): void;
 };
 type YTApi = {
@@ -24,7 +25,7 @@ declare global {
   }
 }
 
-export type PlayerHandle = { seek(sec: number): void };
+export type PlayerHandle = { seek(sec: number): void; getTime(): number };
 
 let apiPromise: Promise<YTApi> | null = null;
 function loadApi(): Promise<YTApi> {
@@ -52,11 +53,20 @@ export function YoutubePlayer({ videoId, ref }: { videoId: string; ref?: Ref<Pla
   const player = useRef<YTPlayer | null>(null);
   const pending = useRef<number | null>(null);
   const [lastSec, setLastSec] = useState(0);
+  const lastSecRef = useRef(0);
   const [failed, setFailed] = useState(false);
 
   useImperativeHandle(ref, () => ({
+    getTime() {
+      try {
+        return player.current?.getCurrentTime() ?? pending.current ?? lastSecRef.current;
+      } catch {
+        return lastSecRef.current;
+      }
+    },
     seek(sec: number) {
       setLastSec(sec);
+      lastSecRef.current = sec;
       if (player.current) {
         player.current.seekTo(sec, true);
         player.current.playVideo();

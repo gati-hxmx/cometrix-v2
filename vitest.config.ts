@@ -1,3 +1,4 @@
 import { defineConfig } from "vitest/config";
 
-export default defineConfig({ test: { include: ["tests/**/*.test.ts"] } });
+// DB のテストは同じデータベースを共有し、各テストが jobs を空にするので、ファイルは順に実行する。
+export default defineConfig({ test: { include: ["tests/**/*.test.ts"], fileParallelism: false } });
