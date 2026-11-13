@@ -1,15 +1,155 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatTime } from "../lib/chart";
-import { nearestIndex } from "../lib/chat-filter";
+import {
+  addTerm,
+  EMPTY_FILTER,
+  type FILTER_KEYS,
+  type Filter,
+  filterParams,
+  isFiltering,
+  MAX_TERM,
+  MAX_TERMS,
+  nearestIndex,
+} from "../lib/chat-filter";
 
-export type Filter = { q: string; user: string };
+export type { Filter };
+
 type Msg = { id: number; offsetMs: number; author: string; body: string };
 
 const LIMIT = 100;
 const EDGE = 15;
 const FOLLOW_MS = 1000;
-const DEBOUNCE_MS = 300;
+
+const FIELDS: { key: (typeof FILTER_KEYS)[number]; label: string; exclude: boolean }[] = [
+  { key: "q", label: "含めるワード", exclude: false },
+  { key: "xq", label: "除外するワード", exclude: true },
+  { key: "user", label: "含めるユーザー", exclude: false },
+  { key: "xuser", label: "除外するユーザー", exclude: true },
+];
+
+const REASON = {
+  empty: "語を入力してください",
+  duplicate: "すでに追加しています",
+  full: `1種類に入れられるのは ${MAX_TERMS} 語までです`,
+  long: `${MAX_TERM} 文字までです`,
+} as const;
+
+/** 語を追加してチップで並べる欄。追加・削除はすぐ反映する（入力途中は反映しない）。 */
+function TermField({
+  label,
+  exclude,
+  terms,
+  onChange,
+}: {
+  label: string;
+  exclude: boolean;
+  terms: string[];
+  onChange: (list: string[]) => void;
+}) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const full = terms.length >= MAX_TERMS;
+  const add = () => {
+    const r = addTerm(terms, text);
+    if (!r.ok) {
+      setError(REASON[r.reason]);
+      return;
+    }
+    setError(null);
+    setText("");
+    onChange(r.list);
+  };
+  const tone = exclude ? "var(--danger)" : "var(--accent-dark)";
+  return (
+    <div style={{ display: "grid", gap: 4, fontSize: 13, color: "var(--muted)" }}>
+      <label htmlFor={`f-${label}`}>{label}</label>
+      <div style={{ display: "flex", gap: 6 }}>
+        <input
+          id={`f-${label}`}
+          type="text"
+          maxLength={MAX_TERM}
+          value={text}
+          disabled={full}
+          onChange={(e) => {
+            setText(e.target.value);
+            setError(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              add();
+            }
+          }}
+          style={{ ...input, flex: 1, minWidth: 0 }}
+        />
+        <button
+          type="button"
+          onClick={add}
+          disabled={full || text.trim() === ""}
+          style={{
+            minHeight: 44,
+            minWidth: 56,
+            border: "1px solid var(--line)",
+            borderRadius: 6,
+            background: "var(--surface)",
+            color: "var(--text)",
+            cursor: "pointer",
+          }}
+        >
+          追加
+        </button>
+      </div>
+      {(error || full) && <span role="alert">{error ?? REASON.full}</span>}
+      {terms.length > 0 && (
+        <ul
+          style={{
+            listStyle: "none",
+            margin: 0,
+            padding: 0,
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 6,
+          }}
+        >
+          {terms.map((t) => (
+            <li
+              key={t}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                border: `1px solid ${tone}`,
+                borderRadius: 16,
+                paddingLeft: 10,
+                color: tone,
+                overflowWrap: "anywhere",
+              }}
+            >
+              {exclude && <span style={{ fontWeight: 700, marginRight: 4 }}>除外</span>}
+              {t}
+              <button
+                type="button"
+                aria-label={`${t} を削除`}
+                onClick={() => onChange(terms.filter((x) => x !== t))}
+                style={{
+                  minWidth: 44,
+                  minHeight: 44,
+                  border: 0,
+                  background: "none",
+                  color: "inherit",
+                  cursor: "pointer",
+                  font: "inherit",
+                }}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 const input = {
   width: "100%",
@@ -25,7 +165,7 @@ const input = {
 
 /**
  * チャット一覧（絞り込み欄つき）。再生位置に近いコメントを出して追従する。
- * 絞り込み（300ms 待ち）は onFilter でグラフ側にも渡す。
+ * 絞り込み（語を追加・削除したとき）は onFilter でグラフ側にも渡す。
  */
 export function ChatList({
   jobId,
@@ -40,8 +180,7 @@ export function ChatList({
   onFilter: (f: Filter) => void;
   onError: (message: string) => void;
 }) {
-  const [draft, setDraft] = useState<Filter>({ q: "", user: "" });
-  const [applied, setApplied] = useState<Filter>({ q: "", user: "" });
+  const [applied, setApplied] = useState<Filter>(EMPTY_FILTER);
   const [msgs, setMsgs] = useState<Msg[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [now, setNow] = useState(0);
@@ -57,22 +196,15 @@ export function ChatList({
   msgsRef.current = msgs;
 
   useEffect(() => {
-    const t = setTimeout(() => setApplied(draft), DEBOUNCE_MS);
-    return () => clearTimeout(t);
-  }, [draft]);
-  useEffect(() => {
     onFilter(applied);
   }, [applied, onFilter]);
 
   const load = useCallback(
     async (around: number) => {
       const my = ++seq.current;
-      const p = new URLSearchParams({
-        aroundSec: String(Math.floor(around)),
-        limit: String(LIMIT),
-      });
-      if (applied.q.trim()) p.set("q", applied.q);
-      if (applied.user.trim()) p.set("user", applied.user);
+      const p = filterParams(applied);
+      p.set("aroundSec", String(Math.floor(around)));
+      p.set("limit", String(LIMIT));
       try {
         const res = await fetch(`/api/jobs/${jobId}/messages?${p}`, { cache: "no-store" });
         if (!res.ok) throw new Error(String(res.status));
@@ -135,36 +267,25 @@ export function ChatList({
     list.scrollTop = row.offsetTop - list.offsetTop - list.clientHeight / 2 + row.clientHeight / 2;
   }, [follow, activeId]);
 
-  const filtering = applied.q.trim() !== "" || applied.user.trim() !== "";
+  const filtering = isFiltering(applied);
 
   return (
     <section className="chat-list" aria-label="チャット">
       <h2 style={{ fontSize: 16, margin: "0 0 8px" }}>チャット</h2>
       <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
-        <label style={{ display: "grid", gap: 4, fontSize: 13, color: "var(--muted)" }}>
-          キーワード
-          <input
-            type="search"
-            maxLength={100}
-            value={draft.q}
-            onChange={(e) => setDraft({ ...draft, q: e.target.value })}
-            style={input}
+        {FIELDS.map((fd) => (
+          <TermField
+            key={fd.key}
+            label={fd.label}
+            exclude={fd.exclude}
+            terms={applied[fd.key]}
+            onChange={(list) => setApplied((cur) => ({ ...cur, [fd.key]: list }))}
           />
-        </label>
-        <label style={{ display: "grid", gap: 4, fontSize: 13, color: "var(--muted)" }}>
-          ユーザー名
-          <input
-            type="search"
-            maxLength={100}
-            value={draft.user}
-            onChange={(e) => setDraft({ ...draft, user: e.target.value })}
-            style={input}
-          />
-        </label>
-        {(draft.q !== "" || draft.user !== "") && (
+        ))}
+        {filtering && (
           <button
             type="button"
-            onClick={() => setDraft({ q: "", user: "" })}
+            onClick={() => setApplied(EMPTY_FILTER)}
             style={{
               minHeight: 44,
               border: "1px solid var(--line)",

@@ -73,6 +73,31 @@ describe.skipIf(!url)("チャットの絞り込み API（Postgres）", () => {
     expect(await body("q=hello&user=jiro")).toEqual([]);
   });
 
+  test("複数の語は OR、除外は優先、除外ユーザーも効く", async () => {
+    const id = await seed();
+    const authors = async (fn: typeof messages, qs: string) =>
+      ((await (await get(fn, id, qs)).json()) as { author: string }[]).map((r) => r.author);
+    expect(await authors(messages, "q=end&q=again")).toEqual(["taro_2", "Jiro"]);
+    expect(await authors(messages, "q=hello&xq=again")).toEqual(["Taro"]);
+    expect(await authors(messages, "xq=hello&xq=end")).toEqual(["Hanako"]);
+    expect(await authors(messages, "user=taro&user=jiro")).toEqual(["Taro", "taro_2", "Jiro"]);
+    expect(await authors(messages, "user=taro&xuser=_2")).toEqual(["Taro"]);
+    expect(await authors(messages, "xuser=taro&xuser=jiro")).toEqual(["Hanako"]);
+    expect(await authors(messages, "q=hello&user=taro&user=jiro&xq=again")).toEqual(["Taro"]);
+    expect(
+      (await get(messages, id, "xq=a&xq=b&xq=c&xq=d&xq=e&xq=f&xq=g&xq=h&xq=i&xq=j&xq=k")).status,
+    ).toBe(400);
+  });
+
+  test("buckets も複数の語と除外を反映する", async () => {
+    const id = await seed();
+    const counts = async (qs: string) =>
+      ((await (await get(buckets, id, qs)).json()) as { count: number }[]).map((r) => r.count);
+    expect(await counts("q=hello&q=end")).toEqual([1, 1, 0, 1]);
+    expect(await counts("q=hello&xuser=taro_2")).toEqual([1, 0, 0, 0]);
+    expect(await counts("xq=hello")).toEqual([1, 0, 0, 1]);
+  });
+
   test("% と _ は文字として扱う", async () => {
     const id = await seed();
     const authors = async (qs: string) =>
