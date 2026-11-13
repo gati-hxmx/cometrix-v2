@@ -23,6 +23,14 @@ export function zoomRange(r: Range, total: number, anchor: number, factor: numbe
   return clampRange({ start, end: start + nextW }, total);
 }
 
+/** 小数の範囲を、区間の番号として使える整数の範囲にそろえる（幅は保ち、0〜total に収める）。 */
+export function snapRange(r: Range, total: number): Range {
+  const c = clampRange(r, total);
+  const width = Math.round(c.end - c.start);
+  const start = Math.min(total - width, Math.max(0, Math.round(c.start)));
+  return { start, end: start + width };
+}
+
 /** 範囲を delta 区間だけ横に動かす（端で止まる。幅は変えない）。 */
 export function panRange(r: Range, total: number, delta: number): Range {
   return clampRange({ start: r.start + delta, end: r.end + delta }, total);

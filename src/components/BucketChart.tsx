@@ -6,6 +6,7 @@ import {
   panRange,
   type Range,
   revealIndex,
+  snapRange,
   timeTicks,
   valueTicks,
   zoomRange,
@@ -74,7 +75,9 @@ export function BucketChart({
   const dragged = useRef(false);
 
   const full: Range = { start: 0, end: total };
-  const range = rangeState ? clampRange(rangeState, total) : full;
+  // 操作中の範囲は小数のまま持ち（少しずつの拡大・移動を積み重ねられる）、表示と棒の番号は整数にそろえる。
+  const exact = rangeState ? clampRange(rangeState, total) : full;
+  const range = snapRange(exact, total);
   const zoomed = range.end - range.start < total;
   const view = buckets.slice(range.start, range.end);
   const bars = groupBuckets(view, MAX_BARS);
@@ -95,8 +98,8 @@ export function BucketChart({
   const xOf = (sec: number) => ((sec - fromSec) / (toSec - fromSec)) * 100;
 
   // 最新の値を、画面の外のイベント（ホイール）から使うための置き場。
-  const latest = useRef({ range, total });
-  latest.current = { range, total };
+  const latest = useRef({ range: exact, total });
+  latest.current = { range: exact, total };
 
   useEffect(() => {
     if (!getTime) return;
@@ -134,7 +137,7 @@ export function BucketChart({
 
   const pick = (raw: number) => {
     setSelected(raw);
-    setRangeState(revealIndex(range, total, raw));
+    setRangeState(revealIndex(exact, total, raw));
     onSeek(buckets[raw].startSec);
   };
   const pickBar = (i: number) => pick(range.start + i * group);
@@ -144,7 +147,7 @@ export function BucketChart({
     pick(Math.min(total - 1, Math.max(0, base + d * group)));
   };
   const zoomBy = (factor: number, anchor: number) =>
-    setRangeState(zoomRange(range, total, anchor, factor));
+    setRangeState(zoomRange(exact, total, anchor, factor));
   const rect = () => plot.current?.getBoundingClientRect();
   const fingerIndex = (e: PointerEvent<HTMLDivElement>) => {
     const r = rect();
@@ -156,14 +159,14 @@ export function BucketChart({
     gesture.current = {
       dist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
       cx: (a.x + b.x) / 2,
-      range,
+      range: exact,
     };
   };
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     dragged.current = false;
     if (e.pointerType === "mouse") {
       if (e.button === 0 && zoomed)
-        drag.current = { x: e.clientX, range, moved: false, id: e.pointerId };
+        drag.current = { x: e.clientX, range: exact, moved: false, id: e.pointerId };
       return;
     }
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });

@@ -4,6 +4,7 @@ import {
   MIN_RANGE,
   panRange,
   revealIndex,
+  snapRange,
   timeTicks,
   valueTicks,
   zoomRange,
@@ -71,5 +72,22 @@ describe("目盛り", () => {
     expect(v[0]).toBe(0);
     expect(v[v.length - 1]).toBeGreaterThanOrEqual(137);
     expect(v.length).toBeLessThanOrEqual(6);
+  });
+});
+
+describe("snapRange", () => {
+  it("小数の範囲を整数にそろえ、幅を保つ", () => {
+    expect(snapRange({ start: 9.9, end: 50.1 }, 60)).toEqual({ start: 10, end: 50 });
+    expect(snapRange({ start: 4.4, end: 14.6 }, 60)).toEqual({ start: 4, end: 14 });
+  });
+  it("端を越えない", () => {
+    expect(snapRange({ start: 49.6, end: 59.9 }, 60)).toEqual({ start: 50, end: 60 });
+    expect(snapRange({ start: -0.4, end: 9.7 }, 60)).toEqual({ start: 0, end: 10 });
+  });
+  it("拡大・移動の結果を、そのまま区間の番号として使える", () => {
+    const r = snapRange(zoomRange({ start: 0, end: 60 }, 60, 0.37, 0.67), 60);
+    expect(Number.isInteger(r.start) && Number.isInteger(r.end)).toBe(true);
+    const p = snapRange(panRange(r, 60, 3.3), 60);
+    expect(Number.isInteger(p.start) && Number.isInteger(p.end)).toBe(true);
   });
 });
