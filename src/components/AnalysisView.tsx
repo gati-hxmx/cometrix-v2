@@ -5,6 +5,7 @@ import type { Bucket } from "../lib/chart";
 import { EMPTY_FILTER, filterParams, isFiltering } from "../lib/chat-filter";
 import { BucketChart } from "./BucketChart";
 import { ChatList, type Filter } from "./ChatList";
+import { PlaybackBar } from "./PlaybackBar";
 import { Toast } from "./Toast";
 import { TwitchPlayer } from "./TwitchPlayer";
 import { UrlForm } from "./UrlForm";
@@ -240,6 +241,16 @@ export function AnalysisView({ id }: { id: string }) {
                 />
               )}
             </section>
+
+            {done?.result && (
+              <PlaybackBar
+                total={total}
+                bucketCount={state.kind === "job" && state.buckets ? state.buckets.length : 0}
+                getTime={getTime}
+                onSeek={seek}
+                enabled
+              />
+            )}
           </div>
           {done?.result && (
             <aside className="analysis-chat" style={{ ...card, marginTop: 16 }}>
