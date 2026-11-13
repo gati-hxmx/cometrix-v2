@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Bucket } from "../lib/chart";
+import { EMPTY_FILTER, filterParams, isFiltering } from "../lib/chat-filter";
 import { BucketChart } from "./BucketChart";
 import { ChatList, type Filter } from "./ChatList";
 import { Toast } from "./Toast";
@@ -53,11 +54,11 @@ export function AnalysisView({ id }: { id: string }) {
   const player = useRef<PlayerHandle>(null);
   const playerBox = useRef<HTMLDivElement>(null);
   const closeToast = useCallback(() => setToast(null), []);
-  const [filter, setFilter] = useState<Filter>({ q: "", user: "" });
+  const [filter, setFilter] = useState<Filter>(EMPTY_FILTER);
   const [filtered, setFiltered] = useState<Bucket[] | null>(null);
   const onFilter = useCallback((f: Filter) => setFilter(f), []);
   const getTime = useCallback(() => player.current?.getTime() ?? 0, []);
-  const filtering = filter.q.trim() !== "" || filter.user.trim() !== "";
+  const filtering = isFiltering(filter);
   const isDone = state.kind === "job" && state.job.status === "done";
 
   // 絞り込み中は、一致したコメントの数でグラフを描き直す。
@@ -69,9 +70,7 @@ export function AnalysisView({ id }: { id: string }) {
     let stale = false;
     // 前の絞り込みの結果を、新しい条件の結果として見せない。
     setFiltered(null);
-    const p = new URLSearchParams();
-    if (filter.q.trim()) p.set("q", filter.q);
-    if (filter.user.trim()) p.set("user", filter.user);
+    const p = filterParams(filter);
     fetch(`/api/jobs/${id}/buckets?${p}`, { cache: "no-store" })
       .then((r) => {
         if (!r.ok) throw new Error(String(r.status));

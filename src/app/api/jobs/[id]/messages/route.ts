@@ -7,6 +7,7 @@ import {
   parseFilter,
   parseIntParam,
 } from "../../../../../lib/chat-filter";
+import { filterConds } from "../../../../../lib/chat-sql";
 
 export const dynamic = "force-dynamic";
 
@@ -30,8 +31,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     return Response.json({ error: { code: "not_ready" } }, { status: 409 });
 
   const conds: SQL[] = [eq(chatMessages.jobId, id), sql`${chatMessages.offsetMs} >= 0`];
-  if (f.q !== null) conds.push(sql`strpos(lower(${chatMessages.body}), ${f.q}) > 0`);
-  if (f.user !== null) conds.push(sql`strpos(lower(${chatMessages.author}), ${f.user}) > 0`);
+  conds.push(...filterConds(f.filter));
   // (job_id, offset_ms) の索引で読めるよう、前と後ろをそれぞれ limit 件までに絞ってから近い順に選ぶ。
   const cols = {
     id: chatMessages.id,

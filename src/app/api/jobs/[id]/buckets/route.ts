@@ -1,7 +1,8 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../../db/client";
 import { chatBuckets, chatMessages, jobs } from "../../../../../db/schema";
-import { fillBuckets, parseFilter } from "../../../../../lib/chat-filter";
+import { fillBuckets, isFiltering, parseFilter } from "../../../../../lib/chat-filter";
+import { filterConds } from "../../../../../lib/chat-sql";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   if (job.status !== "done")
     return Response.json({ error: { code: "not_ready" } }, { status: 409 });
 
-  if (f.q === null && f.user === null) {
+  if (!isFiltering(f.filter)) {
     const rows = await db
       .select({ startSec: chatBuckets.startSec, count: chatBuckets.count })
       .from(chatBuckets)
@@ -32,8 +33,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   }
 
   const conds = [eq(chatMessages.jobId, id), sql`${chatMessages.offsetMs} >= 0`];
-  if (f.q !== null) conds.push(sql`strpos(lower(${chatMessages.body}), ${f.q}) > 0`);
-  if (f.user !== null) conds.push(sql`strpos(lower(${chatMessages.author}), ${f.user}) > 0`);
+  conds.push(...filterConds(f.filter));
   const start = sql<number>`(floor(${chatMessages.offsetMs} / 30000) * 30)::int`;
   const found = await db
     .select({ startSec: start, count: sql<number>`count(*)::int` })
