@@ -209,8 +209,10 @@ export function AnalysisView({ id }: { id: string }) {
               )}
               {state.kind === "job" && state.buckets ? (
                 <BucketChart
+                  key={id}
                   buckets={filtering && filtered ? filtered : state.buckets}
                   onSeek={seek}
+                  getTime={getTime}
                   filtered={filtering && filtered !== null}
                 />
               ) : (
