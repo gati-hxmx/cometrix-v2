@@ -1,5 +1,5 @@
-import { expect, test } from "vitest";
-import { formatTime, groupBuckets, peakIndex } from "../src/lib/chart";
+import { describe, expect, it, test } from "vitest";
+import { formatTime, groupBuckets, indexAtX, peakIndex } from "../src/lib/chart";
 
 const b = (startSec: number, count: number) => ({ startSec, count });
 
@@ -39,4 +39,22 @@ test("時刻は h:mm:ss", () => {
   expect(formatTime(0)).toBe("0:00:00");
   expect(formatTime(90)).toBe("0:01:30");
   expect(formatTime(3661)).toBe("1:01:01");
+});
+
+describe("indexAtX（指でなぞった位置の棒）", () => {
+  it("幅を棒の数で等分して、位置にある棒を返す", () => {
+    expect(indexAtX(0, 300, 3)).toBe(0);
+    expect(indexAtX(99, 300, 3)).toBe(0);
+    expect(indexAtX(100, 300, 3)).toBe(1);
+    expect(indexAtX(299, 300, 3)).toBe(2);
+  });
+  it("枠の外にはみ出した位置は端の棒にする", () => {
+    expect(indexAtX(-20, 300, 3)).toBe(0);
+    expect(indexAtX(300, 300, 3)).toBe(2);
+    expect(indexAtX(999, 300, 3)).toBe(2);
+  });
+  it("棒がない・幅が0なら -1", () => {
+    expect(indexAtX(10, 300, 0)).toBe(-1);
+    expect(indexAtX(10, 0, 3)).toBe(-1);
+  });
 });

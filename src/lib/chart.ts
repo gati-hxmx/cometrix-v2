@@ -31,3 +31,10 @@ export function formatTime(sec: number): string {
   const s = Math.floor(sec % 60);
   return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
+
+/** グラフの左端から x の位置にある棒の番号（幅を棒の数で等分）。はみ出しは端の棒。棒がないなら -1。 */
+export function indexAtX(x: number, width: number, count: number): number {
+  if (count <= 0 || width <= 0) return -1;
+  const i = Math.floor((x / width) * count);
+  return Math.min(count - 1, Math.max(0, i));
+}
