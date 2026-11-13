@@ -122,7 +122,7 @@ export function TwitchPlayer({ videoId, ref }: { videoId: string; ref?: Ref<Play
 
   const openUrl = `https://www.twitch.tv/videos/${videoId}?t=${twitchTimeParam(lastSec)}`;
   return (
-    <div>
+    <div className="tw-player">
       <div style={{ position: "relative", aspectRatio: "16 / 9", background: "var(--surface-2)" }}>
         <div ref={host} style={{ position: "absolute", inset: 0 }} className="yt-host" />
         {problem && (
@@ -174,7 +174,7 @@ export function TwitchPlayer({ videoId, ref }: { videoId: string; ref?: Ref<Play
           </div>
         )}
       </div>
-      {/* Twitch の埋め込みは幅 400px 未満を想定していないため、狭い画面では Twitch で開く道も常に出す。 */}
+      {/* Twitch の埋め込みは 400×300px 以上が条件。満たさない幅では Twitch で開く道も常に出す。 */}
       {!problem && (
         <p className="tw-open-narrow" style={{ margin: "4px 0 0", textAlign: "right" }}>
           <a

@@ -81,11 +81,15 @@ body {
   }
 }
 
-/* Twitch の埋め込みが小さくなる幅だけ、「Twitch で開く」を出す（TwitchPlayer）。 */
+/* Twitch の埋め込みは 400×300px 以上が条件。16:9 で高さ 300px に届かない幅（533px 以下）のときだけ、
+   プレイヤーの下に「Twitch で開く」を出す（TwitchPlayer）。画面幅ではなくプレイヤーの幅で決める。 */
+.tw-player {
+  container-type: inline-size;
+}
 .tw-open-narrow {
   display: none;
 }
-@media (max-width: 439px) {
+@container (max-width: 533px) {
   .tw-open-narrow {
     display: block;
   }
