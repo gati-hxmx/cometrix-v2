@@ -17,6 +17,7 @@ description: 実装と動作確認の後、PR を作り、別の AI にレビュ
 3. PR に `risk:*` ラベルを付ける（Issue と同じ）。
 4. レビューを依頼する。
    - Claude Code が作った PR → Codex（自動レビュー、または `@codex review` とコメント）。画面・操作の変更があれば、あわせて「ui-review スキルで画面を確かめてください」と `@codex` にコメントする
+   - Codex は bot のコメントには反応しないため、レビューが始まらなくても待たずに終えてかまいません。30分たっても始まらなければ、見張り（`.github/workflows/watchdog.yml`）が人の名前で頼み直します
    - Codex が作った PR → Claude Code に review を依頼（`@claude` で review スキルを使うようコメント）
 
 ## 次に呼ぶスキル

@@ -73,6 +73,9 @@ else
   echo "  （shellcheck が無いので省略）"
 fi
 
+step "見張り（scripts/watchdog.py）のテスト"
+python3 -m unittest discover -s scripts -p 'test_*.py' -q || failed=1
+
 step "ワークフローの YAML"
 if python3 -c 'import yaml' 2>/dev/null; then
   # shellcheck disable=SC2016 # Python の中の ${{ は GitHub の式の文字で、シェルの展開ではない
