@@ -48,6 +48,8 @@ export function AnalysisView({ id }: { id: string }) {
       return;
     }
     let stale = false;
+    // 前の絞り込みの結果を、新しい条件の結果として見せない。
+    setFiltered(null);
     const p = new URLSearchParams();
     if (filter.q.trim()) p.set("q", filter.q);
     if (filter.user.trim()) p.set("user", filter.user);

@@ -46,6 +46,8 @@ export function ChatList({
   const [failed, setFailed] = useState(false);
   const [now, setNow] = useState(0);
   const [follow, setFollow] = useState(true);
+  const followRef = useRef(true);
+  followRef.current = follow;
   const fetchedAround = useRef(0);
   const seq = useRef(0);
   const listRef = useRef<HTMLUListElement>(null);
@@ -103,7 +105,8 @@ export function ChatList({
       nowRef.current = t;
       setNow(t);
       const rows = msgsRef.current;
-      if (!rows || rows.length < LIMIT) return;
+      // 手でスクロールして読んでいる間は取り直さない（「再生位置に戻る」で取り直す）。
+      if (!followRef.current || !rows || rows.length < LIMIT) return;
       const i = nearestIndex(
         rows.map((r) => r.offsetMs),
         t,
