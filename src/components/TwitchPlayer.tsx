@@ -101,6 +101,8 @@ export function TwitchPlayer({ videoId, ref }: { videoId: string; ref?: Ref<Play
         p.addEventListener(Twitch.Player.READY, () => {
           ready = true;
           player.current = p;
+          // 15秒を過ぎてから準備できた場合も、失敗の案内を消してプレイヤーを使えるようにする。
+          setProblem((prev) => (prev === "failed" ? null : prev));
           if (pending.current !== null) {
             p.seek(pending.current);
             p.play();
@@ -120,37 +122,61 @@ export function TwitchPlayer({ videoId, ref }: { videoId: string; ref?: Ref<Play
 
   const openUrl = `https://www.twitch.tv/videos/${videoId}?t=${twitchTimeParam(lastSec)}`;
   return (
-    <div style={{ position: "relative", aspectRatio: "16 / 9", background: "var(--surface-2)" }}>
-      <div ref={host} style={{ position: "absolute", inset: 0 }} className="yt-host" />
-      {problem && (
-        <div
-          role="status"
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-            padding: 16,
-            textAlign: "center",
-            background: problem === "failed" ? "var(--surface-2)" : "transparent",
-            pointerEvents: problem === "failed" ? "auto" : "none",
-          }}
-        >
-          <p
+    <div>
+      <div style={{ position: "relative", aspectRatio: "16 / 9", background: "var(--surface-2)" }}>
+        <div ref={host} style={{ position: "absolute", inset: 0 }} className="yt-host" />
+        {problem && (
+          <div
+            role="status"
             style={{
-              margin: 0,
-              padding: problem === "blocked" ? "4px 8px" : 0,
-              background: problem === "blocked" ? "var(--surface)" : "transparent",
-              borderRadius: "var(--radius)",
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              padding: 16,
+              textAlign: "center",
+              background: problem === "failed" ? "var(--surface-2)" : "transparent",
+              pointerEvents: problem === "failed" ? "auto" : "none",
             }}
           >
-            {problem === "failed"
-              ? "⚠ 動画を読み込めませんでした。"
-              : "⚠ 自動再生が止められました。プレイヤーの再生ボタンを押してください。"}
-          </p>
+            <p
+              style={{
+                margin: 0,
+                padding: problem === "blocked" ? "4px 8px" : 0,
+                background: problem === "blocked" ? "var(--surface)" : "transparent",
+                borderRadius: "var(--radius)",
+              }}
+            >
+              {problem === "failed"
+                ? "⚠ 動画を読み込めませんでした。"
+                : "⚠ 自動再生が止められました。プレイヤーの再生ボタンを押してください。"}
+            </p>
+            <a
+              href={openUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                color: "var(--accent-dark)",
+                minHeight: 44,
+                display: "inline-flex",
+                alignItems: "center",
+                pointerEvents: "auto",
+                background: problem === "blocked" ? "var(--surface)" : "transparent",
+                padding: problem === "blocked" ? "0 8px" : 0,
+                borderRadius: "var(--radius)",
+              }}
+            >
+              Twitch で開く（{formatTime(lastSec)}）
+            </a>
+          </div>
+        )}
+      </div>
+      {/* Twitch の埋め込みは幅 400px 未満を想定していないため、狭い画面では Twitch で開く道も常に出す。 */}
+      {!problem && (
+        <p className="tw-open-narrow" style={{ margin: "4px 0 0", textAlign: "right" }}>
           <a
             href={openUrl}
             target="_blank"
@@ -160,15 +186,11 @@ export function TwitchPlayer({ videoId, ref }: { videoId: string; ref?: Ref<Play
               minHeight: 44,
               display: "inline-flex",
               alignItems: "center",
-              pointerEvents: "auto",
-              background: problem === "blocked" ? "var(--surface)" : "transparent",
-              padding: problem === "blocked" ? "0 8px" : 0,
-              borderRadius: "var(--radius)",
             }}
           >
             Twitch で開く（{formatTime(lastSec)}）
           </a>
-        </div>
+        </p>
       )}
     </div>
   );

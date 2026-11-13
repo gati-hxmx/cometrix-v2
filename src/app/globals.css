@@ -80,3 +80,13 @@ body {
     max-height: none;
   }
 }
+
+/* Twitch の埋め込みが小さくなる幅だけ、「Twitch で開く」を出す（TwitchPlayer）。 */
+.tw-open-narrow {
+  display: none;
+}
+@media (max-width: 439px) {
+  .tw-open-narrow {
+    display: block;
+  }
+}
