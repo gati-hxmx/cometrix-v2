@@ -20,6 +20,10 @@ export const jobs = pgTable(
     url: text("url").notNull(),
     // 正規化した動画 ID。同じ動画の重複登録を防ぐ（failed 以外は1動画1件）。
     videoId: text("video_id"),
+    // 動画の置き場。動画 ID の重複はプラットフォームごとに見る。
+    platform: text("platform", { enum: ["youtube", "twitch"] })
+      .notNull()
+      .default("youtube"),
     status: text("status", { enum: ["queued", "running", "done", "failed"] })
       .notNull()
       .default("queued"),
@@ -32,7 +36,9 @@ export const jobs = pgTable(
   },
   (t) => [
     index("jobs_status_created_idx").on(t.status, t.createdAt),
-    uniqueIndex("jobs_video_active_uniq").on(t.videoId).where(sql`${t.status} <> 'failed'`),
+    uniqueIndex("jobs_video_active_uniq")
+      .on(t.platform, t.videoId)
+      .where(sql`${t.status} <> 'failed'`),
   ],
 );
 

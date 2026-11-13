@@ -5,11 +5,13 @@ import type { Bucket } from "../lib/chart";
 import { BucketChart } from "./BucketChart";
 import { ChatList, type Filter } from "./ChatList";
 import { Toast } from "./Toast";
+import { TwitchPlayer } from "./TwitchPlayer";
 import { UrlForm } from "./UrlForm";
 import { type PlayerHandle, YoutubePlayer } from "./YoutubePlayer";
 
 type Job = {
   status: "queued" | "running" | "done" | "failed";
+  platform?: "youtube" | "twitch";
   videoId?: string | null;
   result?: { videoId: string; title: string; totalComments: number } | null;
   error?: { code: string; message: string } | null;
@@ -26,6 +28,23 @@ const card = {
   borderRadius: "var(--radius)",
   padding: 16,
 } as const;
+
+/** 配信元に合ったプレイヤー。どちらも同じ PlayerHandle（seek・getTime）を持つ。 */
+function Player({
+  platform,
+  videoId,
+  ref,
+}: {
+  platform?: "youtube" | "twitch";
+  videoId: string;
+  ref: React.Ref<PlayerHandle>;
+}) {
+  return platform === "twitch" ? (
+    <TwitchPlayer ref={ref} videoId={videoId} />
+  ) : (
+    <YoutubePlayer ref={ref} videoId={videoId} />
+  );
+}
 
 /** 分析画面（docs/screens/analysis.md 案 A）。チャット一覧は #5。 */
 export function AnalysisView({ id }: { id: string }) {
@@ -158,7 +177,7 @@ export function AnalysisView({ id }: { id: string }) {
       {noChatVideo && (
         <>
           <div ref={playerBox} style={{ marginTop: 16, scrollMarginTop: 8 }}>
-            <YoutubePlayer ref={player} videoId={noChatVideo} />
+            <Player ref={player} platform={job?.platform} videoId={noChatVideo} />
           </div>
           <section style={{ ...card, marginTop: 16 }}>
             <h2 style={{ fontSize: 16, margin: "0 0 8px" }}>コメント数（30秒ごと）</h2>
@@ -183,7 +202,7 @@ export function AnalysisView({ id }: { id: string }) {
 
             <div ref={playerBox} style={{ marginTop: 16, scrollMarginTop: 8 }}>
               {done?.result ? (
-                <YoutubePlayer ref={player} videoId={done.result.videoId} />
+                <Player ref={player} platform={done.platform} videoId={done.result.videoId} />
               ) : (
                 <div
                   aria-hidden

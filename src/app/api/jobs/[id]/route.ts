@@ -13,6 +13,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     .select({
       id: jobs.id,
       status: jobs.status,
+      platform: jobs.platform,
       videoId: jobs.videoId,
       result: jobs.result,
       error: jobs.error,
