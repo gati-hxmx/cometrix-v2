@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Bucket } from "../lib/chart";
 import { BucketChart } from "./BucketChart";
+import { ChatList, type Filter } from "./ChatList";
 import { Toast } from "./Toast";
 import { UrlForm } from "./UrlForm";
 import { type PlayerHandle, YoutubePlayer } from "./YoutubePlayer";
@@ -33,6 +34,34 @@ export function AnalysisView({ id }: { id: string }) {
   const player = useRef<PlayerHandle>(null);
   const playerBox = useRef<HTMLDivElement>(null);
   const closeToast = useCallback(() => setToast(null), []);
+  const [filter, setFilter] = useState<Filter>({ q: "", user: "" });
+  const [filtered, setFiltered] = useState<Bucket[] | null>(null);
+  const onFilter = useCallback((f: Filter) => setFilter(f), []);
+  const getTime = useCallback(() => player.current?.getTime() ?? 0, []);
+  const filtering = filter.q.trim() !== "" || filter.user.trim() !== "";
+  const isDone = state.kind === "job" && state.job.status === "done";
+
+  // 絞り込み中は、一致したコメントの数でグラフを描き直す。
+  useEffect(() => {
+    if (!filtering || !isDone) {
+      setFiltered(null);
+      return;
+    }
+    let stale = false;
+    const p = new URLSearchParams();
+    if (filter.q.trim()) p.set("q", filter.q);
+    if (filter.user.trim()) p.set("user", filter.user);
+    fetch(`/api/jobs/${id}/buckets?${p}`, { cache: "no-store" })
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json() as Promise<Bucket[]>;
+      })
+      .then((b) => !stale && setFiltered(b))
+      .catch(() => !stale && setToast("絞り込んだグラフを読み込めませんでした。"));
+    return () => {
+      stale = true;
+    };
+  }, [filter, filtering, isDone, id]);
 
   useEffect(() => {
     let stopped = false;
@@ -103,8 +132,11 @@ export function AnalysisView({ id }: { id: string }) {
   const noChatVideo =
     job?.status === "failed" && job.error?.code === "no_chat" && job.videoId ? job.videoId : null;
 
+  const matched = filtered ? filtered.reduce((sum, b) => sum + b.count, 0) : null;
+  const total = done?.result?.totalComments ?? 0;
+
   return (
-    <main className="analysis" style={{ maxWidth: 860, margin: "0 auto", padding: "16px" }}>
+    <main className="analysis" style={{ maxWidth: 1240, margin: "0 auto", padding: "16px" }}>
       <div className="analysis-url">
         <UrlForm />
       </div>
@@ -134,45 +166,71 @@ export function AnalysisView({ id }: { id: string }) {
       )}
 
       {job?.status !== "failed" && (
-        <>
-          <section style={{ ...card, marginTop: 16 }}>
-            <h1 style={{ fontSize: 20, margin: "0 0 4px" }}>
-              {done?.result?.title ?? (waiting ? "分析中…" : "")}
-            </h1>
-            <p style={{ margin: 0, color: "var(--muted)" }}>
-              {done?.result
-                ? `コメント ${done.result.totalComments.toLocaleString("ja-JP")} 件`
-                : "チャットを取得して集計しています。数分かかることがあります。"}
-            </p>
-          </section>
+        <div className="analysis-grid">
+          <div className="analysis-main">
+            <section style={{ ...card, marginTop: 16 }}>
+              <h1 style={{ fontSize: 20, margin: "0 0 4px" }}>
+                {done?.result?.title ?? (waiting ? "分析中…" : "")}
+              </h1>
+              <p style={{ margin: 0, color: "var(--muted)" }}>
+                {done?.result
+                  ? `コメント ${done.result.totalComments.toLocaleString("ja-JP")} 件`
+                  : "チャットを取得して集計しています。数分かかることがあります。"}
+              </p>
+            </section>
 
-          <div ref={playerBox} style={{ marginTop: 16, scrollMarginTop: 8 }}>
-            {done?.result ? (
-              <YoutubePlayer ref={player} videoId={done.result.videoId} />
-            ) : (
-              <div
-                aria-hidden
-                style={{
-                  aspectRatio: "16 / 9",
-                  background: "var(--surface-2)",
-                  borderRadius: "var(--radius)",
-                }}
-              />
-            )}
+            <div ref={playerBox} style={{ marginTop: 16, scrollMarginTop: 8 }}>
+              {done?.result ? (
+                <YoutubePlayer ref={player} videoId={done.result.videoId} />
+              ) : (
+                <div
+                  aria-hidden
+                  style={{
+                    aspectRatio: "16 / 9",
+                    background: "var(--surface-2)",
+                    borderRadius: "var(--radius)",
+                  }}
+                />
+              )}
+            </div>
+
+            <section style={{ ...card, marginTop: 16 }}>
+              <h2 style={{ fontSize: 16, margin: "0 0 8px" }}>コメント数（30秒ごと）</h2>
+              {filtering && matched !== null && (
+                <p
+                  aria-live="polite"
+                  style={{ margin: "0 0 8px", color: "var(--muted)", fontSize: 13 }}
+                >
+                  絞り込み中：一致 {matched.toLocaleString("ja-JP")} / 全{" "}
+                  {total.toLocaleString("ja-JP")} 件
+                </p>
+              )}
+              {state.kind === "job" && state.buckets ? (
+                <BucketChart
+                  buckets={filtering && filtered ? filtered : state.buckets}
+                  onSeek={seek}
+                  filtered={filtering && filtered !== null}
+                />
+              ) : (
+                <div
+                  aria-hidden
+                  style={{ height: 162, background: "var(--surface-2)", borderRadius: 6 }}
+                />
+              )}
+            </section>
           </div>
-
-          <section style={{ ...card, marginTop: 16 }}>
-            <h2 style={{ fontSize: 16, margin: "0 0 8px" }}>コメント数（30秒ごと）</h2>
-            {state.kind === "job" && state.buckets ? (
-              <BucketChart buckets={state.buckets} onSeek={seek} />
-            ) : (
-              <div
-                aria-hidden
-                style={{ height: 162, background: "var(--surface-2)", borderRadius: 6 }}
+          {done?.result && (
+            <aside className="analysis-chat" style={{ ...card, marginTop: 16 }}>
+              <ChatList
+                jobId={id}
+                getTime={getTime}
+                onSeek={seek}
+                onFilter={onFilter}
+                onError={setToast}
               />
-            )}
-          </section>
-        </>
+            </aside>
+          )}
+        </div>
       )}
       <Toast message={toast} onClose={closeToast} />
     </main>

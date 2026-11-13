@@ -26,9 +26,12 @@ const stepButton = {
 export function BucketChart({
   buckets,
   onSeek,
+  filtered = false,
 }: {
   buckets: Bucket[];
   onSeek: (sec: number) => void;
+  /** 絞り込み中。空の文言と棒の説明を「一致」にする。 */
+  filtered?: boolean;
 }) {
   const [selected, setSelected] = useState<number | null>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -44,7 +47,7 @@ export function BucketChart({
   if (bars.length === 0 || peak === -1) {
     return (
       <p style={{ margin: 0, padding: "32px 0", textAlign: "center", color: "var(--muted)" }}>
-        コメントがありません
+        {filtered ? "一致するコメントがありません" : "コメントがありません"}
       </p>
     );
   }
@@ -105,7 +108,7 @@ export function BucketChart({
           }}
         >
           {shownBar
-            ? `${formatTime(shownBar.startSec)} から ・ ${shownBar.count} コメント`
+            ? `${formatTime(shownBar.startSec)} から ・ ${filtered ? `一致 ${shownBar.count} 件` : `${shownBar.count} コメント`}`
             : "棒を押すと、その時刻から再生します"}
         </p>
         <button
@@ -136,7 +139,7 @@ export function BucketChart({
           <button
             key={b.startSec}
             type="button"
-            aria-label={`${formatTime(b.startSec)} から ${b.count} コメント`}
+            aria-label={`${formatTime(b.startSec)} から ${filtered ? `一致 ${b.count} 件` : `${b.count} コメント`}`}
             aria-pressed={selected === i}
             onClick={() => {
               if (touchPicked.current) {
