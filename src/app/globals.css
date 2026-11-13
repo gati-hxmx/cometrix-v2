@@ -28,6 +28,41 @@
   --chart-minus: #a3261b;
   --chart-1-weak: #dceafa;
   --chart-1-text: #2c5a96;
+  --on-accent: #ffffff;
+  color-scheme: light;
+}
+
+/* ダーク配色。2026-11-13（#28）にオーナーが A 紺を選んだ。値だけを差し替える（docs/design/colors.md の 6） */
+html[data-theme="dark"] {
+  --bg: #0f1620;
+  --surface: #17212d;
+  --surface-2: #1f2b3a;
+  --line: #2e3d50;
+  --text: #e6edf5;
+  --muted: #9fb0c3;
+  --accent: #7fb0ee;
+  --accent-dark: #a9cbf5;
+  --accent-weak: #1f3350;
+  --accent-line: #3d5f8f;
+  --sat: #7fb0ee;
+  --warn: #f0c674;
+  --warn-weak: #33290f;
+  --warn-line: #7a6428;
+  --danger: #ff9b91;
+  --danger-weak: #3a1e1c;
+  --danger-line: #8a403a;
+  --ok: #7fd4a0;
+  --ok-weak: #16301f;
+  --ok-line: #2f6b48;
+  --chart-1: #4f7fc0;
+  --chart-2: #4a9a8c;
+  --chart-3: #c98a5e;
+  --chart-4: #7c8a9b;
+  --chart-minus: #ff9b91;
+  --chart-1-weak: #1f3350;
+  --chart-1-text: #a9cbf5;
+  --on-accent: #0b1118;
+  color-scheme: dark;
 }
 
 body {

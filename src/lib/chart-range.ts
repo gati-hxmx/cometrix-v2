@@ -45,6 +45,12 @@ export function revealIndex(r: Range, total: number, index: number): Range {
 
 const TIME_STEPS = [30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400];
 
+/** 横軸の時刻ラベル（「0:00:00」で約 48px）が隣と接しないよう、描画幅から目盛りの最大本数を決める。PC は最大 10 本。 */
+export function maxTickCount(widthPx: number): number {
+  if (!Number.isFinite(widthPx) || widthPx <= 0) return 10;
+  return Math.max(2, Math.min(10, Math.floor(widthPx / 80)));
+}
+
 /** from〜to 秒の範囲に、最大 maxCount 本の時刻の目盛り（間隔の倍数）を返す。 */
 export function timeTicks(fromSec: number, toSec: number, maxCount = 10): number[] {
   const span = toSec - fromSec;

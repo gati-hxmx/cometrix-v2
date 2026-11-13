@@ -3,6 +3,7 @@ import { type KeyboardEvent, type PointerEvent, useEffect, useRef, useState } fr
 import { type Bucket, formatTime, groupBuckets, indexAtX, peakIndex } from "../lib/chart";
 import {
   clampRange,
+  maxTickCount,
   panRange,
   type Range,
   revealIndex,
@@ -61,6 +62,7 @@ export function BucketChart({
   const [rangeState, setRangeState] = useState<Range | null>(null);
   const [playSec, setPlaySec] = useState(0);
   const plot = useRef<HTMLDivElement>(null);
+  const [plotWidth, setPlotWidth] = useState(0);
   // 指で選んだ直後に来る click で、別の棒を選び直さないための印。
   const touchPicked = useRef(false);
   const pointers = useRef(new Map<number, Pointer>());
@@ -110,6 +112,17 @@ export function BucketChart({
   }, [getTime]);
 
   const hasBars = bars.length > 0 && peak !== -1;
+  // 横軸の目盛りの本数を、描画の幅から決めるために幅を測る（#28：375px でラベルが接していた）。
+  useEffect(() => {
+    const el = plot.current;
+    if (!el || !hasBars) return;
+    const measure = () => setPlotWidth(el.getBoundingClientRect().width);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [hasBars]);
   // Ctrl＋ホイール（トラックパッドのピンチも ctrlKey 付きで来る）で拡大・縮小する。
   // ページの拡大を止めるため、passive にしない形で登録する。
   useEffect(() => {
@@ -251,7 +264,7 @@ export function BucketChart({
     e.preventDefault();
   };
 
-  const ticks = timeTicks(fromSec, toSec);
+  const ticks = timeTicks(fromSec, toSec, maxTickCount(plotWidth));
   const yTicks = valueTicks(Math.max(1, ...bars.map((b) => b.count)));
   const label = (b: Bucket) =>
     `${formatTime(b.startSec)} から ${filtered ? `一致 ${b.count} 件` : `${b.count} コメント`}`;
