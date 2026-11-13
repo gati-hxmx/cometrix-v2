@@ -1,12 +1,16 @@
 # 止まった自走作業を見つけて再開する見張り役（docs/workflow.md の「5. 止まったときの自動再開」）。
 # AI は使わず、scripts/watchdog.py が GitHub の様子を見て、必要なときだけ Agent を起動し直す。
+# GitHub の定期実行（schedule）は混むと何時間も来ないため、1回の実行の中で15分ごとに確かめ続け、
+# 約5時間たったら次の実行を自分で起動してつなぐ（公開リポジトリなので Actions の時間は無料）。
+# schedule は、つなぎが切れたときに拾い直す予備。止めるときは Actions で Watchdog を Disable する
+# （動いている実行も15分以内に自分で終わる）。
 # Secret CODEX_REQUEST_TOKEN（人の GitHub トークン）があれば、Codex にレビューを頼み直せる
 # （Codex は bot のコメントには反応しないため。docs/setup.md）。
 name: Watchdog
 
 on:
   schedule:
-    - cron: "7,22,37,52 * * * *"   # 15分ごと（混む毎時0分を避ける）
+    - cron: "7,37 * * * *"   # 予備（つなぎが切れたときに再開する）
   workflow_dispatch:
     inputs:
       dry_run:
@@ -27,13 +31,33 @@ concurrency:
 jobs:
   watch:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 330
     steps:
       - uses: actions/checkout@v4
-      - name: 止まった作業を探して再開する
+      - name: 止まった作業を15分ごとに探して再開する
         env:
           GH_TOKEN: ${{ github.token }}
           CODEX_REQUEST_TOKEN: ${{ secrets.CODEX_REQUEST_TOKEN }}
           CODEX_BOT_LOGIN: ${{ vars.CODEX_BOT_LOGIN }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: python3 scripts/watchdog.py ${{ inputs.dry_run && '--dry-run' || '' }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: |
+          if [ "$DRY_RUN" = true ]; then
+            python3 scripts/watchdog.py --dry-run
+            exit 0
+          fi
+          end=$((SECONDS + 5 * 3600))
+          while :; do
+            python3 scripts/watchdog.py || echo "::warning::見張りの確認に失敗しました（次の回でもう一度確かめます）"
+            [ "$SECONDS" -ge "$end" ] && break
+            sleep 900
+            state=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/watchdog.yml" --jq .state || echo active)
+            [ "$state" = active ] || { echo "Watchdog が無効にされたので終わります"; exit 0; }
+          done
+          echo "next=true" >> "$GITHUB_OUTPUT"
+        id: watch
+      - name: 次の見張りを起動する
+        if: steps.watch.outputs.next == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run watchdog.yml -R "$GITHUB_REPOSITORY" -f dry_run=false

@@ -82,7 +82,7 @@ flowchart LR
 
 ## 5. 止まったときの自動再開
 
-`.github/workflows/watchdog.yml` が15分ごとに `scripts/watchdog.py` を動かし、止まった作業を人が気づく前に再開します。AI は、再開が必要なときだけ起動します。
+`.github/workflows/watchdog.yml` が15分ごとに `scripts/watchdog.py` を動かし、止まった作業を人が気づく前に再開します。AI は、再開が必要なときだけ起動します。GitHub の定期実行は混むと何時間も来ないので、1回の実行の中で15分ごとに確かめ続け、約5時間ごとに次の実行へつなぎます。
 
 | 止まり方 | 見張りがすること |
 | --- | --- |
@@ -94,3 +94,4 @@ flowchart LR
 - `needs-human`・`blocked` のラベルが付いた PR、下書きの PR、自動マージ待ちの PR は触りません。
 - 再開するたびに、PR に「自動の見張り」のコメント（`<!-- watchdog:… -->`）を残します。回数の上限はこのコメントで数えます。
 - 判断だけを確かめたいときは、Actions の Watchdog を手動で実行します（既定は dry-run）。
+- 止めるときは、Actions で Watchdog を「Disable workflow」にします。動いている実行も15分以内に自分で終わります。再開は「Enable workflow」のあと、手動で dry_run を外して1回実行します。
