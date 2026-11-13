@@ -88,6 +88,18 @@ class DecideTest(unittest.TestCase):
         self.assertIsNone(w.decide(state(running=True), T0 + timedelta(hours=3), has_token=True))
 
 
+class RequestCommentsTest(unittest.TestCase):
+    def test_only_requests_after_head_commit(self):
+        comments = [{"id": 1, "created_at": at(-5), "body": "@codex review"},
+                    {"id": 2, "created_at": at(5), "body": "@codex review\nよろしく"},
+                    {"id": 3, "created_at": at(6), "body": "ありがとう"}]
+        self.assertEqual([c["id"] for c in w.request_comments(comments, T0)], [2])
+
+    def test_eyes_on_request_comment_means_running(self):
+        s = state(reactions=[{"created_at": at(31), "user": user(f"{CODEX}[bot]"), "content": "eyes"}])
+        self.assertIsNone(w.decide(s, T0 + timedelta(minutes=45), has_token=True))
+
+
 class RerunTest(unittest.TestCase):
     def run_(self, minutes_ago, **kw):
         base = {"status": "completed", "conclusion": "failure", "run_attempt": 1,

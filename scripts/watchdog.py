@@ -100,6 +100,13 @@ def should_notify_run(run: dict, now: datetime) -> bool:
     return done is not None and timedelta(0) <= now - done < WATCH_INTERVAL
 
 
+def request_comments(comments: list, head_time: datetime) -> list:
+    """いまのコミットのあとに書かれた @codex review の依頼コメント。"""
+    return [c for c in comments
+            if "@codex review" in (c.get("body") or "")
+            and (ts(c.get("created_at")) or head_time) >= head_time]
+
+
 def is_login(user: dict | None, login: str) -> bool:
     name = (user or {}).get("login", "")
     return name in (login, f"{login}[bot]")
@@ -184,8 +191,9 @@ def main() -> int:
     runs = get(f"repos/{repo}/actions/workflows/agent.yml/runs?per_page=100")["workflow_runs"]
     running = [r for r in runs if r.get("status") in ("queued", "in_progress", "waiting", "pending")]
     busy = {r["head_branch"] for r in running}
-    # 見張りが頼んだ実行（workflow_dispatch）はブランチが main になるので、動いている間は PR を触らない
-    all_busy = any(r.get("event") in ("workflow_dispatch", "schedule") for r in running)
+    # 見張りが頼んだ実行（workflow_dispatch）や @claude のコメント（issue_comment）はブランチが main になり、
+    # どの PR のものか分からないので、動いている間は PR を触らない
+    all_busy = any(r.get("event") in ("workflow_dispatch", "schedule", "issue_comment") for r in running)
 
     # 2. エラーで終わった Agent の実行を再実行する
     for run in runs:
@@ -205,12 +213,18 @@ def main() -> int:
             continue
         n = pr["number"]
         commit = get(f"repos/{repo}/commits/{pr['head']['sha']}")
+        head_time = ts(commit["commit"]["committer"]["date"])
+        comments = get_all(f"repos/{repo}/issues/{n}/comments?per_page=100")
+        reactions = get_all(f"repos/{repo}/issues/{n}/reactions?per_page=100")
+        # Codex は @codex review のコメント自体に 👀・👍 を付けることもある
+        for c in request_comments(comments, head_time):
+            reactions += get_all(f"repos/{repo}/issues/comments/{c['id']}/reactions?per_page=100")
         state = build_state(
             pr,
-            head_time=ts(commit["commit"]["committer"]["date"]),
-            comments=get_all(f"repos/{repo}/issues/{n}/comments?per_page=100"),
+            head_time=head_time,
+            comments=comments,
             reviews=get_all(f"repos/{repo}/pulls/{n}/reviews?per_page=100"),
-            reactions=get_all(f"repos/{repo}/issues/{n}/reactions?per_page=100"),
+            reactions=reactions,
             codex=codex,
             agent_running=all_busy or ref in busy,
         )
