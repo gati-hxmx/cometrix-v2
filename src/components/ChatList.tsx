@@ -216,7 +216,6 @@ export function ChatList({
             ref={listRef}
             onWheel={() => setFollow(false)}
             onTouchMove={() => setFollow(false)}
-            onPointerDown={() => setFollow(false)}
             className="chat-scroll"
             style={{
               listStyle: "none",

@@ -1,4 +1,4 @@
-import { and, asc, eq, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, type SQL, sql } from "drizzle-orm";
 import { getDb } from "../../../../../db/client";
 import { chatMessages, jobs } from "../../../../../db/schema";
 import {
@@ -32,18 +32,31 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const conds: SQL[] = [eq(chatMessages.jobId, id), sql`${chatMessages.offsetMs} >= 0`];
   if (f.q !== null) conds.push(sql`strpos(lower(${chatMessages.body}), ${f.q}) > 0`);
   if (f.user !== null) conds.push(sql`strpos(lower(${chatMessages.author}), ${f.user}) > 0`);
-  const near = db
-    .select({
-      id: chatMessages.id,
-      offsetMs: chatMessages.offsetMs,
-      author: chatMessages.author,
-      body: chatMessages.body,
-    })
-    .from(chatMessages)
-    .where(and(...conds))
-    .orderBy(sql`abs(${chatMessages.offsetMs} - ${around * 1000})`, asc(chatMessages.id))
-    .limit(limit)
-    .as("near");
-  const rows = await db.select().from(near).orderBy(asc(near.offsetMs), asc(near.id));
+  // (job_id, offset_ms) の索引で読めるよう、前と後ろをそれぞれ limit 件までに絞ってから近い順に選ぶ。
+  const cols = {
+    id: chatMessages.id,
+    offsetMs: chatMessages.offsetMs,
+    author: chatMessages.author,
+    body: chatMessages.body,
+  };
+  const at = around * 1000;
+  const [before, after] = await Promise.all([
+    db
+      .select(cols)
+      .from(chatMessages)
+      .where(and(...conds, sql`${chatMessages.offsetMs} <= ${at}`))
+      .orderBy(desc(chatMessages.offsetMs), desc(chatMessages.id))
+      .limit(limit),
+    db
+      .select(cols)
+      .from(chatMessages)
+      .where(and(...conds, sql`${chatMessages.offsetMs} > ${at}`))
+      .orderBy(asc(chatMessages.offsetMs), asc(chatMessages.id))
+      .limit(limit),
+  ]);
+  const rows = [...before, ...after]
+    .sort((a, b) => Math.abs(a.offsetMs - at) - Math.abs(b.offsetMs - at) || a.id - b.id)
+    .slice(0, limit)
+    .sort((a, b) => a.offsetMs - b.offsetMs || a.id - b.id);
   return Response.json(rows);
 }
