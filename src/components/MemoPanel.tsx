@@ -119,6 +119,13 @@ export function MemoPanel({
                   type="button"
                   onClick={() => onSeek(p.sec as number)}
                   style={{
+                    // 文中でも押せる範囲は高さ・幅とも 44px（基本 8）。
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    minHeight: 44,
+                    minWidth: 44,
+                    verticalAlign: "middle",
                     background: "none",
                     border: 0,
                     padding: "0 2px",
