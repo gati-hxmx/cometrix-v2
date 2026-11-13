@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ダーク配色の見本（#28）</title>
+<style>
+:root{--radius:10px;--danger:#ff9b91;--danger-weak:#3a1e1c;--warn:#f0c674;--warn-weak:#33290f;--ok:#7fd4a0;--ok-weak:#16301f}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.6 system-ui,"Noto Sans JP",sans-serif}
+header{background:var(--surface);border-bottom:1px solid var(--line)}
+.in{max-width:1100px;margin:0 auto;padding:0 16px}
+.hd{display:flex;align-items:center;justify-content:space-between;min-height:52px}
+.logo{color:var(--accent-dark);font-weight:700;font-size:18px}
+.tg{min-height:44px;padding:0 14px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);border-radius:var(--radius);display:flex;align-items:center;gap:6px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin:12px 0}
+.label{color:var(--muted);font-size:12px}
+.bars{display:flex;align-items:flex-end;gap:3px;height:110px;border-bottom:1px solid var(--line);margin-top:8px}
+.bars i{flex:1;background:var(--chart-1);border-radius:3px 3px 0 0}
+.bars i.sel{background:var(--accent)}
+.row{display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}
+.t{color:var(--muted);min-width:56px}.u{color:var(--accent-dark);font-weight:600}
+.btn{display:inline-flex;align-items:center;min-height:44px;padding:0 18px;border-radius:var(--radius);background:var(--accent);color:var(--btn-text,#0b1118);font-weight:700}
+.nf{text-align:center;padding:24px 14px}.nf h2{margin:6px 0}
+.pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;border:1px solid var(--accent-line);background:var(--accent-weak);color:var(--accent-dark)}
+.tag{position:fixed;top:60px;right:8px;font-size:11px;color:var(--muted)}
+</style>
+<script>
+const P={
+A:{n:"A 紺（いまの青をそのまま夜に）",bg:"#0f1620",surface:"#17212d","surface-2":"#1f2b3a",line:"#2e3d50",text:"#e6edf5",muted:"#9fb0c3",accent:"#7fb0ee","accent-dark":"#a9cbf5","accent-weak":"#1f3350","accent-line":"#3d5f8f","chart-1":"#4f7fc0"},
+B:{n:"B 墨（無彩色に近い黒。映画館のような暗さ）",bg:"#121214",surface:"#1c1c1f","surface-2":"#26262a",line:"#3a3a40",text:"#ececee",muted:"#a3a3ab",accent:"#8ab4f0","accent-dark":"#b0cdf6","accent-weak":"#252c3a","accent-line":"#4a5a78","chart-1":"#5a82bd"},
+C:{n:"C 深い青緑（落ち着いた緑み）",bg:"#0e1a1c",surface:"#152427","surface-2":"#1d3236",line:"#2c474c",text:"#e4f0ef",muted:"#9db8b6",accent:"#7fd0c4","accent-dark":"#a8e2d9","accent-weak":"#1a3b3d","accent-line":"#3d7a78","chart-1":"#4a9a92"},
+D:{n:"D 明るめの青灰（真っ暗にしない・コントラスト控えめ）",bg:"#1e2430",surface:"#273040","surface-2":"#303b4e",line:"#435064",text:"#e8edf4",muted:"#b0bccc",accent:"#8dbbf5","accent-dark":"#b3d3fa","accent-weak":"#2e4263","accent-line":"#5878a8","chart-1":"#5f8fd0"}};
+const k=new URLSearchParams(location.search).get("p")||"A",p=P[k];
+for(const x in p)if(x!=="n")document.documentElement.style.setProperty("--"+x,p[x]);
+addEventListener("DOMContentLoaded",()=>{document.getElementById("nm").textContent=p.n});
+</script></head><body>
+<header><div class="in hd"><span class="logo">Cometrix</span><span class="tg">☾ ダーク</span></div></header>
+<div class="in">
+<div class="label" id="nm" style="margin-top:8px"></div>
+<div class="card"><div class="label">コメント数の推移</div>
+<div class="bars"><i style="height:20%"></i><i style="height:35%"></i><i style="height:30%"></i><i style="height:60%"></i><i style="height:45%"></i><i class="sel" style="height:95%"></i><i style="height:70%"></i><i style="height:40%"></i><i style="height:25%"></i><i style="height:50%"></i><i style="height:30%"></i><i style="height:18%"></i></div>
+<div style="display:flex;justify-content:space-between" class="label"><span>0:00:00</span><span>0:30:00</span><span>1:00:00</span></div></div>
+<div class="card"><span class="pill">選択中 0:42:30</span>
+<div class="row"><span class="t">0:42:31</span><span><span class="u">ひなた</span> ここ最高すぎる！！</span></div>
+<div class="row"><span class="t">0:42:33</span><span><span class="u">kuro</span> www</span></div>
+<div class="row"><span class="t">0:42:40</span><span><span class="u">みかん</span> 今のもう一回見たい</span></div></div>
+<div class="card" style="display:flex;gap:8px;flex-wrap:wrap"><span style="color:var(--ok);background:var(--ok-weak);padding:4px 10px;border-radius:8px">✓ 取得できました</span><span style="color:var(--warn);background:var(--warn-weak);padding:4px 10px;border-radius:8px">⚠ 一部取得できません</span><span style="color:var(--danger);background:var(--danger-weak);padding:4px 10px;border-radius:8px">× 失敗しました</span></div>
+<div class="card nf"><div class="label">404</div><h2>ページが見つかりません</h2><p class="label">URL が間違っているか、ページが移動しました。</p><span class="btn">トップへ戻る</span></div>
+</div></body></html>
