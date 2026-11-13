@@ -26,6 +26,13 @@ scripts/setup-github.sh gati-hxmx/<リポジトリ名>
 3. Codex のクラウドの環境（このリポジトリ用）を作っておきます。Issue に `@codex` とコメントされると、その環境で作業して PR を出します。動かない場合も、24時間後に groom が Claude に引き継ぐので作業は止まりません。
 4. 手元の Codex CLI は ChatGPT アカウントでログインしておきます（`codex login`）。`scripts/ai` の予備として使います。
 
+5. Codex は bot（Claude の GitHub App）が書いた `@codex review` には反応しません。見張り（`.github/workflows/watchdog.yml`）が人の名前で頼み直せるように、GitHub のトークンを Secret `CODEX_REQUEST_TOKEN` に登録します。
+   - GitHub の Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token
+   - Repository access：Codex にレビューしてもらうリポジトリだけを選ぶ
+   - Permissions：**Pull requests** を Read and write（ほかは不要）
+   - できたトークンを、各リポジトリの Secret `CODEX_REQUEST_TOKEN` に登録します（Settings → Secrets and variables → Actions）。期限が切れたら作り直します
+   - 未登録でも止まりはしません。Codex のレビューが始まらないときは、Claude が代わりにレビューします
+
 Codex はリポジトリの `AGENTS.md` と `.agents/skills/` を読みます。
 
 ## 3. 通知（Discord）
@@ -42,7 +49,7 @@ LINE にしたい場合は、LINE Notify が 2025年3月に終了しているた
 
 ## 4. 定期実行
 
-毎日の groom（タスク発掘・保留の再開）と毎週の retro（振り返り）は、`.github/workflows/agent.yml` の schedule で動きます。Claude Code のルーティンで動かしたい場合は、schedule を消してルーティンに同じ指示を登録します。
+毎日の groom（タスク発掘・保留の再開）と毎週の retro（振り返り）は、`.github/workflows/agent.yml` の schedule で動きます。止まった作業の自動再開は `.github/workflows/watchdog.yml` が15分ごとに行います（[自走ワークフロー](workflow.md#5-止まったときの自動再開)）。Claude Code のルーティンで動かしたい場合は、schedule を消してルーティンに同じ指示を登録します。
 
 ## 5. 手元（Mac）
 

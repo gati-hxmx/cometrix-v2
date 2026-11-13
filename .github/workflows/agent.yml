@@ -21,9 +21,12 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: "groom か retro"
+        description: "groom・retro、または見張り（watchdog.yml）が使う claude-review・advance"
         required: true
         default: groom
+      pr:
+        description: "claude-review・advance で進める PR の番号"
+        required: false
 
 permissions:
   contents: write
@@ -34,7 +37,7 @@ permissions:
 
 # 同じ Issue・PR で AI が同時に2つ動かないようにする。
 concurrency:
-  group: agent-${{ github.event.issue.number || github.event.pull_request.number || github.event.workflow_run.head_branch || github.event.schedule || github.run_id }}
+  group: agent-${{ github.event.issue.number || github.event.pull_request.number || github.event.workflow_run.head_branch || inputs.pr || github.event.schedule || github.run_id }}
   cancel-in-progress: false
 
 env:
@@ -165,7 +168,7 @@ jobs:
                       print(f"::warning::断られた操作: {name} {cmd.split()[0] if cmd else ''}")
           PY
 
-  # 定期実行：毎日 groom、毎週 retro。
+  # 定期実行：毎日 groom、毎週 retro。見張り（watchdog.yml）からの再開もここで動く。
   scheduled:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
@@ -174,11 +177,24 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: 頼む内容を決める
+        id: task
+        env:
+          TASK: ${{ github.event.schedule == '0 23 * * 0' && 'retro' || inputs.task || 'groom' }}
+          PR: ${{ inputs.pr }}
+        run: |
+          case "$TASK" in
+            retro) p="AGENTS.md に従い、retro スキルで過去1週間を振り返り、改善 PR と週の報告を出してください。" ;;
+            claude-review) p="PR #$PR で Codex のレビューが始まらないため、自動の見張りが代わりを頼みました。AGENTS.md の「片方が使えないときはもう一方が代わりに行う」に従い、review スキルでこの PR をレビューし、結果を PR にコメントしてください（Codex の代わりであることを書き、gh pr review は使わない）。続けて、必須の指摘があれば address スキル、なければ merge-gate スキルで進めてください。" ;;
+            advance) p="PR #$PR はレビューのあと30分以上動きがないため、自動の見張りが再開を頼みました。PR のコメントとレビューを読み、必須の指摘が残っていれば address スキル、なければ merge-gate スキルで進めてください。往復の回数（2回まで）を守り、人の判断が要るときは escalate スキルを使ってください。" ;;
+            *) p="AGENTS.md に従い、groom スキルで保留中の Issue の再開とタスクの発掘をしてください。" ;;
+          esac
+          echo "prompt=$p" >> "$GITHUB_OUTPUT"
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: --allowedTools "${{ env.CLAUDE_ALLOWED_TOOLS }}"
-          prompt: ${{ (github.event.schedule == '0 23 * * 0' || inputs.task == 'retro') && 'AGENTS.md に従い、retro スキルで過去1週間を振り返り、改善 PR と週の報告を出してください。' || 'AGENTS.md に従い、groom スキルで保留中の Issue の再開とタスクの発掘をしてください。' }}
+          prompt: ${{ steps.task.outputs.prompt }}
       - name: 権限で断られた操作（ツール名だけ）
         if: always()
         run: |

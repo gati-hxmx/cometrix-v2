@@ -70,6 +70,7 @@ flowchart LR
 | 本番のエラー増加 | エラー監視から Issue を自動作成（`incident` ラベル） | incident |
 | 毎朝 | Claude Code のルーティン、または `agent.yml` の schedule | groom、`blocked` の再開 |
 | 毎週 | Claude Code のルーティン、または `agent.yml` の schedule | retro |
+| 15分ごと | `.github/workflows/watchdog.yml`（AI を使わない見張り） | 止まった PR・失敗した実行の再開（下の 5） |
 
 ## 4. 状態の残し方
 
@@ -78,3 +79,18 @@ flowchart LR
 - 進行中の Issue には `in-progress`、人待ちは `needs-human`、利用上限で保留は `blocked`。
 - 各スキルの終わりに、Issue または PR に「やったこと・仮定・確認結果・次に呼ぶスキル」をコメントします。
 - 再開するときは、最後のコメントの「次に呼ぶスキル」から始めます。
+
+## 5. 止まったときの自動再開
+
+`.github/workflows/watchdog.yml` が15分ごとに `scripts/watchdog.py` を動かし、止まった作業を人が気づく前に再開します。AI は、再開が必要なときだけ起動します。
+
+| 止まり方 | 見張りがすること |
+| --- | --- |
+| Claude の PR で、Codex のレビューが30分以上始まらない（Codex は bot の `@codex review` に反応しない） | 人のトークン（Secret `CODEX_REQUEST_TOKEN`）で `@codex review` を頼み直す。2回で始まらなければ、Claude が代わりにレビューして進める |
+| レビューは終わったのに、30分以上次へ進まない（指摘なしで 👍 だけのときなど） | Claude に address か merge-gate で進めてもらう（2回まで） |
+| Agent の実行がエラーや時間切れで終わった | 30分おいて1回だけ再実行する。それでも失敗したら Discord に知らせる |
+| 上のどれでも進まない | Discord に1回だけ知らせる |
+
+- `needs-human`・`blocked` のラベルが付いた PR、下書きの PR、自動マージ待ちの PR は触りません。
+- 再開するたびに、PR に「自動の見張り」のコメント（`<!-- watchdog:… -->`）を残します。回数の上限はこのコメントで数えます。
+- 判断だけを確かめたいときは、Actions の Watchdog を手動で実行します（既定は dry-run）。

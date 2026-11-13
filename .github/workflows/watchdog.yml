@@ -1,0 +1,39 @@
+# 止まった自走作業を見つけて再開する見張り役（docs/workflow.md の「5. 止まったときの自動再開」）。
+# AI は使わず、scripts/watchdog.py が GitHub の様子を見て、必要なときだけ Agent を起動し直す。
+# Secret CODEX_REQUEST_TOKEN（人の GitHub トークン）があれば、Codex にレビューを頼み直せる
+# （Codex は bot のコメントには反応しないため。docs/setup.md）。
+name: Watchdog
+
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"   # 15分ごと（混む毎時0分を避ける）
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "何もせずに判断だけを表示する"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  actions: write   # Agent の再実行と起動に使う
+
+concurrency:
+  group: watchdog
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: 止まった作業を探して再開する
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CODEX_REQUEST_TOKEN: ${{ secrets.CODEX_REQUEST_TOKEN }}
+          CODEX_BOT_LOGIN: ${{ vars.CODEX_BOT_LOGIN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python3 scripts/watchdog.py ${{ inputs.dry_run && '--dry-run' || '' }}
