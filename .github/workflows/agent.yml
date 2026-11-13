@@ -193,6 +193,8 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # 見張り（watchdog.yml）が GITHUB_TOKEN で起動するので、github-actions の bot を許可する
+          allowed_bots: "github-actions,github-actions[bot]"
           claude_args: --allowedTools "${{ env.CLAUDE_ALLOWED_TOOLS }}"
           prompt: ${{ steps.task.outputs.prompt }}
       - name: 権限で断られた操作（ツール名だけ）
