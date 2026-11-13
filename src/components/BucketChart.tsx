@@ -298,10 +298,25 @@ export function BucketChart({
           position: "relative",
           marginLeft: AXIS_LEFT,
           marginRight: AXIS_RIGHT,
+          marginTop: 20,
           marginBottom: AXIS_BOTTOM,
           height: HEIGHT,
         }}
       >
+        <span
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: -18,
+            right: "100%",
+            paddingRight: 6,
+            fontSize: 11,
+            color: "var(--muted)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          件
+        </span>
         {yTicks.map((v) => (
           <div
             key={v}

@@ -64,6 +64,44 @@ body {
 .chat-scroll {
   max-height: 60vh;
 }
+
+/* お知らせ（基本 8-1）：画面の下。PC は右下 380px、スマホは横いっぱい */
+.toast {
+  position: fixed;
+  z-index: 20;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 4px 4px 14px;
+  background: var(--danger-weak);
+  border: 1px solid var(--danger-line);
+  border-radius: var(--radius);
+  color: var(--danger);
+}
+.toast p {
+  flex: 1;
+  margin: 0;
+  padding: 10px 0;
+}
+.toast button {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  cursor: pointer;
+}
+@media (min-width: 900px) {
+  .toast {
+    left: auto;
+    width: 380px;
+  }
+}
 @media (min-width: 1024px) {
   .analysis-grid {
     display: grid;

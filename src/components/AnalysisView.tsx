@@ -29,6 +29,15 @@ const card = {
   padding: 16,
 } as const;
 
+/** 文字のリンク。スマホでも押せる範囲を高さ・幅とも 44px 以上にする（基本 8）。 */
+const backLink = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: 44,
+  minWidth: 44,
+  color: "var(--accent-dark)",
+} as const;
+
 /** 配信元に合ったプレイヤー。どちらも同じ PlayerHandle（seek・getTime）を持つ。 */
 function Player({
   platform,
@@ -138,7 +147,7 @@ export function AnalysisView({ id }: { id: string }) {
       <main style={{ maxWidth: 760, margin: "0 auto", padding: "32px 16px" }}>
         <div style={card}>
           <p style={{ margin: "0 0 12px" }}>分析が見つかりません。</p>
-          <Link href="/" style={{ color: "var(--accent-dark)" }}>
+          <Link href="/" style={backLink}>
             トップへ戻る
           </Link>
         </div>
@@ -168,7 +177,7 @@ export function AnalysisView({ id }: { id: string }) {
             ⚠ 分析できませんでした
           </p>
           <p style={{ margin: "0 0 12px" }}>{job.error?.message ?? "原因が分かりません。"}</p>
-          <Link href="/" style={{ color: "var(--accent-dark)" }}>
+          <Link href="/" style={backLink}>
             別の URL で分析し直す
           </Link>
         </div>
