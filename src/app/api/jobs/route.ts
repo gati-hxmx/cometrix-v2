@@ -9,11 +9,10 @@ export async function POST(req: Request) {
   const url = typeof body?.url === "string" ? body.url : "";
   const res = await enqueue(getDb(), url);
   if (!res.ok) {
-    const message =
-      res.code === "unsupported_url"
-        ? "Twitch にはまだ対応していません。"
-        : FAILURE_MESSAGES.invalid_url;
-    return Response.json({ error: { code: res.code, message } }, { status: 400 });
+    return Response.json(
+      { error: { code: res.code, message: FAILURE_MESSAGES.invalid_url } },
+      { status: 400 },
+    );
   }
   return Response.json({ id: res.id }, { status: res.created ? 201 : 200 });
 }

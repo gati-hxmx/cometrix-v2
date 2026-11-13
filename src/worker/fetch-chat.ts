@@ -11,7 +11,11 @@ const execFileAsync = promisify(execFile);
 
 export type FetchedChat = { title: string; messages: ChatMessage[] };
 /** 取得の差し替え口。テストでは保存済みのサンプルを返す関数を渡す。 */
-export type ChatFetcher = (videoId: string, url: string) => Promise<FetchedChat>;
+export type ChatFetcher = (
+  videoId: string,
+  url: string,
+  platform: "youtube" | "twitch",
+) => Promise<FetchedChat>;
 
 const TIMEOUT_MS = 10 * 60 * 1000;
 

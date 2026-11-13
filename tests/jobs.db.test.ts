@@ -40,6 +40,7 @@ describe.skipIf(!url)("ジョブ処理（Postgres）", () => {
     const [job] = await db.select().from(jobs).where(eq(jobs.id, res.id));
     expect(job.status).toBe("done");
     expect(job.result).toEqual({
+      platform: "youtube",
       videoId: "aaaaaaaaaaa",
       title: "テスト配信",
       totalComments: 4,
@@ -68,6 +69,30 @@ describe.skipIf(!url)("ジョブ処理（Postgres）", () => {
     const third = await enqueue(db, A);
     if (!third.ok) throw new Error("enqueue failed");
     expect(third.id).not.toBe(first.id);
+  });
+
+  test("Twitch の VOD は platform つきで登録され、重複は配信元ごとに見る", async () => {
+    const T = "https://www.twitch.tv/videos/2345678901";
+    const first = await enqueue(db, `${T}?t=1m`);
+    const again = await enqueue(db, T);
+    if (!first.ok || !again.ok) throw new Error("enqueue failed");
+    expect(again.id).toBe(first.id);
+    const [row] = await db.select().from(jobs).where(eq(jobs.id, first.id));
+    expect(row.platform).toBe("twitch");
+    expect(row.videoId).toBe("2345678901");
+
+    // 取得は platform を受け取り、result にも入る。
+    let seen = "";
+    await processNext(db, async (_id, _url, platform) => {
+      seen = platform;
+      return { title: "Twitch の配信", messages: parseLiveChat(sample) };
+    });
+    expect(seen).toBe("twitch");
+    const [done] = await db.select().from(jobs).where(eq(jobs.id, first.id));
+    expect(done.result).toMatchObject({ platform: "twitch", videoId: "2345678901" });
+
+    // 同じ ID の YouTube の動画とは別物として登録できる（ID の形が重なる場合の保険）。
+    await db.insert(jobs).values({ url: "x", videoId: "2345678901", platform: "youtube" });
   });
 
   test("不正な URL ではジョブを作らない", async () => {

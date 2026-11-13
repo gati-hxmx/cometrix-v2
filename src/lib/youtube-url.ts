@@ -1,12 +1,15 @@
+export type Platform = "youtube" | "twitch";
+
 export type ParsedUrl =
-  | { ok: true; videoId: string; url: string }
-  | { ok: false; code: "invalid_url" | "unsupported_url" };
+  | { ok: true; platform: Platform; videoId: string; url: string }
+  | { ok: false; code: "invalid_url" };
 
 const ID = /^[A-Za-z0-9_-]{11}$/;
+const TWITCH_ID = /^[0-9]{1,15}$/;
 const YT_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"]);
 const TWITCH_HOSTS = new Set(["twitch.tv", "www.twitch.tv", "m.twitch.tv"]);
 
-/** YouTube の URL から動画 ID を取り出し、正規化した URL を返す。 */
+/** YouTube／Twitch（アーカイブ）の URL から動画 ID を取り出し、正規化した URL を返す。 */
 export function parseVideoUrl(input: string): ParsedUrl {
   let u: URL;
   try {
@@ -16,7 +19,17 @@ export function parseVideoUrl(input: string): ParsedUrl {
   }
   if (u.protocol !== "https:" && u.protocol !== "http:") return { ok: false, code: "invalid_url" };
   const host = u.hostname.toLowerCase();
-  if (TWITCH_HOSTS.has(host)) return { ok: false, code: "unsupported_url" };
+
+  if (TWITCH_HOSTS.has(host)) {
+    const [, first, id] = u.pathname.split("/");
+    if (first !== "videos" || !id || !TWITCH_ID.test(id)) return { ok: false, code: "invalid_url" };
+    return {
+      ok: true,
+      platform: "twitch",
+      videoId: id,
+      url: `https://www.twitch.tv/videos/${id}`,
+    };
+  }
 
   let id: string | null = null;
   if (host === "youtu.be") {
@@ -27,5 +40,10 @@ export function parseVideoUrl(input: string): ParsedUrl {
     else if (first === "live" || first === "embed" || first === "shorts") id = second ?? null;
   }
   if (!id || !ID.test(id)) return { ok: false, code: "invalid_url" };
-  return { ok: true, videoId: id, url: `https://www.youtube.com/watch?v=${id}` };
+  return {
+    ok: true,
+    platform: "youtube",
+    videoId: id,
+    url: `https://www.youtube.com/watch?v=${id}`,
+  };
 }

@@ -36,6 +36,9 @@ services:
     build: { context: ., target: worker }
     environment:
       DATABASE_URL: postgres://cometrix:cometrix@db:5432/cometrix
+      # Twitch のタイトル取得用（任意）。値は .env かホストの Secret に置く。未設定でも分析はできる。
+      TWITCH_CLIENT_ID: ${TWITCH_CLIENT_ID:-}
+      TWITCH_CLIENT_SECRET: ${TWITCH_CLIENT_SECRET:-}
     depends_on:
       migrate: { condition: service_completed_successfully }
 

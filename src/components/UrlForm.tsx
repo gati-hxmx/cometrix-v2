@@ -5,8 +5,8 @@ import { parseVideoUrl } from "../lib/youtube-url";
 import { Toast } from "./Toast";
 
 const MESSAGES = {
-  invalid_url: "YouTube の配信の URL を入れてください。",
-  unsupported_url: "Twitch にはまだ対応していません。",
+  invalid_url:
+    "YouTube の配信アーカイブか、Twitch のアーカイブ（twitch.tv/videos/…）の URL を入れてください。",
 } as const;
 
 /** URL を入れて分析を始める入力欄。トップと分析画面（PC）で共通。 */
@@ -97,7 +97,7 @@ export function UrlForm({ autoFocus = false }: { autoFocus?: boolean }) {
         </p>
       ) : (
         <p style={{ margin: "8px 0 0", color: "var(--muted)", fontSize: 14 }}>
-          例：https://www.youtube.com/watch?v=… （YouTube の配信アーカイブ）
+          例：https://www.youtube.com/watch?v=… または https://www.twitch.tv/videos/…
         </p>
       )}
       <Toast message={toast} onClose={() => setToast(null)} />

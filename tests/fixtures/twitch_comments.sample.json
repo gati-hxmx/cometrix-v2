@@ -1,0 +1,64 @@
+[
+  {
+    "data": {
+      "video": {
+        "comments": {
+          "edges": [
+            {
+              "cursor": "c1",
+              "node": {
+                "contentOffsetSeconds": -2,
+                "commenter": { "displayName": "early", "login": "early" },
+                "message": { "fragments": [{ "text": "開始前" }] }
+              }
+            },
+            {
+              "cursor": "c2",
+              "node": {
+                "contentOffsetSeconds": 1.5,
+                "commenter": { "displayName": "Alice", "login": "alice" },
+                "message": { "fragments": [{ "text": "こんにちは " }, { "text": "Kappa" }] }
+              }
+            },
+            {
+              "cursor": "c3",
+              "node": {
+                "contentOffsetSeconds": 29.9,
+                "commenter": { "displayName": null, "login": "bob" },
+                "message": { "fragments": [{ "text": "w" }] }
+              }
+            }
+          ],
+          "pageInfo": { "hasNextPage": true }
+        }
+      }
+    }
+  },
+  {
+    "data": {
+      "video": {
+        "comments": {
+          "edges": [
+            {
+              "cursor": "c4",
+              "node": {
+                "contentOffsetSeconds": 30,
+                "commenter": null,
+                "message": { "fragments": [] }
+              }
+            },
+            {
+              "cursor": "c5",
+              "node": {
+                "contentOffsetSeconds": 95,
+                "commenter": { "displayName": "Carol", "login": "carol" },
+                "message": { "fragments": [{ "text": "!" }] }
+              }
+            }
+          ],
+          "pageInfo": { "hasNextPage": false }
+        }
+      }
+    }
+  }
+]

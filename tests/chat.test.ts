@@ -11,6 +11,7 @@ const sample = readFileSync(new URL("./fixtures/live_chat.sample.jsonl", import.
 test("URL の形から動画 ID を取り出して正規化する", () => {
   const want = {
     ok: true,
+    platform: "youtube",
     videoId: "dQw4w9WgXcQ",
     url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
   };
@@ -23,7 +24,7 @@ test("URL の形から動画 ID を取り出して正規化する", () => {
     expect(parseVideoUrl(u)).toEqual(want);
 });
 
-test("不正な URL は invalid_url、Twitch は unsupported_url", () => {
+test("不正な URL は invalid_url", () => {
   for (const u of [
     "",
     "abc",
@@ -34,10 +35,6 @@ test("不正な URL は invalid_url、Twitch は unsupported_url", () => {
     "https://www.youtube.com/",
   ])
     expect(parseVideoUrl(u)).toEqual({ ok: false, code: "invalid_url" });
-  expect(parseVideoUrl("https://www.twitch.tv/videos/123")).toEqual({
-    ok: false,
-    code: "unsupported_url",
-  });
 });
 
 test("live_chat のサンプルからコメントを読む（絵文字・スパチャ・壊れた行）", () => {
