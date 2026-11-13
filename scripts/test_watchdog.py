@@ -73,6 +73,11 @@ class DecideTest(unittest.TestCase):
         s = state(reactions=[{"created_at": at(5), "user": user(f"{CODEX}[bot]"), "content": "+1"}])
         self.assertEqual(w.decide(s, T0 + timedelta(hours=1), has_token=True), "advance")
 
+    def test_thumbs_up_resets_idle_timer(self):
+        s = state(reactions=[{"created_at": at(120), "user": user(f"{CODEX}[bot]"), "content": "+1"}])
+        self.assertIsNone(w.decide(s, T0 + timedelta(minutes=130), has_token=True))
+        self.assertEqual(w.decide(s, T0 + timedelta(minutes=151), has_token=True), "advance")
+
     def test_review_of_older_commit_is_not_done(self):
         s = state(reviews=[{"submitted_at": at(10), "user": user(f"{CODEX}[bot]"), "commit_id": "0ld"}])
         self.assertIsNone(s.codex_done_at)
@@ -96,6 +101,17 @@ class RerunTest(unittest.TestCase):
         self.assertTrue(self.run_(40, conclusion="timed_out"))
         self.assertFalse(self.run_(40, run_attempt=2))
         self.assertFalse(self.run_(60 * 25))
+
+    def test_failed_again_after_rerun_is_notified_once(self):
+        def notify(minutes_ago, **kw):
+            base = {"status": "completed", "conclusion": "failure", "run_attempt": 2,
+                    "updated_at": at(-minutes_ago)}
+            base.update(kw)
+            return w.should_notify_run(base, T0)
+        self.assertTrue(notify(5))
+        self.assertFalse(notify(20))  # 前の見張りで通知済み
+        self.assertFalse(notify(5, run_attempt=1))
+        self.assertFalse(notify(5, conclusion="success"))
 
     def test_success_skipped_cancelled_are_left_alone(self):
         for c in ("success", "skipped", "cancelled"):

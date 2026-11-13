@@ -27,6 +27,7 @@ IDLE = timedelta(minutes=int(os.environ.get("WATCHDOG_IDLE_MINUTES", "30")))
 CODEX_RUNNING_LIMIT = timedelta(minutes=60)  # 👀 が付いてからこの時間は待つ
 RERUN_WAIT = timedelta(minutes=30)
 RERUN_WINDOW = timedelta(hours=24)
+WATCH_INTERVAL = timedelta(minutes=15)  # watchdog.yml の間隔。再実行も失敗した実行の通知は、この間に1回だけ
 MAX_NUDGES = 2
 SKIP_LABELS = {"needs-human", "blocked"}
 MARKER = re.compile(r"<!-- watchdog:(\w[\w-]*) sha=([0-9a-f]+) -->")
@@ -89,6 +90,16 @@ def should_rerun(run: dict, now: datetime) -> bool:
     return done is not None and RERUN_WAIT <= now - done <= RERUN_WINDOW
 
 
+def should_notify_run(run: dict, now: datetime) -> bool:
+    """再実行しても失敗した実行を知らせるか（終わってから最初の見張りで1回だけ）。"""
+    if run.get("status") != "completed" or run.get("conclusion") not in ("failure", "timed_out"):
+        return False
+    if run.get("run_attempt", 1) < 2:
+        return False
+    done = ts(run.get("updated_at"))
+    return done is not None and timedelta(0) <= now - done < WATCH_INTERVAL
+
+
 def is_login(user: dict | None, login: str) -> bool:
     name = (user or {}).get("login", "")
     return name in (login, f"{login}[bot]")
@@ -126,6 +137,7 @@ def build_state(pr: dict, head_time: datetime, comments: list, reviews: list, re
             continue
         if r.get("content") == "+1":
             done(at)
+            state.last_activity = max(state.last_activity, at)
         elif r.get("content") == "eyes":
             state.codex_running_at = max(state.codex_running_at or at, at)
     return state
@@ -180,6 +192,10 @@ def main() -> int:
         if should_rerun(run, now):
             act(f"再実行: {run['html_url']}",
                 lambda run=run: gh("run", "rerun", str(run["id"]), "--failed", "-R", repo))
+        elif should_notify_run(run, now):
+            act(f"通知（再実行も失敗）: {run['html_url']}",
+                lambda run=run: subprocess.run(
+                    ["scripts/notify", f"Agent の実行が再実行しても失敗しました: {run['html_url']}"], check=False))
 
     # 1. 止まった PR を進める
     for pr in get_all(f"repos/{repo}/pulls?state=open&per_page=100"):
