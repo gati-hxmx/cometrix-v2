@@ -2,8 +2,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Bucket } from "../lib/chart";
+import { EMPTY_FILTER, filterParams, isFiltering } from "../lib/chat-filter";
 import { BucketChart } from "./BucketChart";
 import { ChatList, type Filter } from "./ChatList";
+import { MemoPanel } from "./MemoPanel";
+import { PlaybackBar } from "./PlaybackBar";
 import { Toast } from "./Toast";
 import { TwitchPlayer } from "./TwitchPlayer";
 import { UrlForm } from "./UrlForm";
@@ -62,11 +65,12 @@ export function AnalysisView({ id }: { id: string }) {
   const player = useRef<PlayerHandle>(null);
   const playerBox = useRef<HTMLDivElement>(null);
   const closeToast = useCallback(() => setToast(null), []);
-  const [filter, setFilter] = useState<Filter>({ q: "", user: "" });
+  const [filter, setFilter] = useState<Filter>(EMPTY_FILTER);
+  const [tab, setTab] = useState<"chat" | "memo">("chat");
   const [filtered, setFiltered] = useState<Bucket[] | null>(null);
   const onFilter = useCallback((f: Filter) => setFilter(f), []);
   const getTime = useCallback(() => player.current?.getTime() ?? 0, []);
-  const filtering = filter.q.trim() !== "" || filter.user.trim() !== "";
+  const filtering = isFiltering(filter);
   const isDone = state.kind === "job" && state.job.status === "done";
 
   // 絞り込み中は、一致したコメントの数でグラフを描き直す。
@@ -78,9 +82,7 @@ export function AnalysisView({ id }: { id: string }) {
     let stale = false;
     // 前の絞り込みの結果を、新しい条件の結果として見せない。
     setFiltered(null);
-    const p = new URLSearchParams();
-    if (filter.q.trim()) p.set("q", filter.q);
-    if (filter.user.trim()) p.set("user", filter.user);
+    const p = filterParams(filter);
     fetch(`/api/jobs/${id}/buckets?${p}`, { cache: "no-store" })
       .then((r) => {
         if (!r.ok) throw new Error(String(r.status));
@@ -250,16 +252,81 @@ export function AnalysisView({ id }: { id: string }) {
                 />
               )}
             </section>
+
+            {done?.result && (
+              <PlaybackBar
+                total={total}
+                bucketCount={state.kind === "job" && state.buckets ? state.buckets.length : 0}
+                getTime={getTime}
+                onSeek={seek}
+                enabled
+              />
+            )}
           </div>
           {done?.result && (
             <aside className="analysis-chat" style={{ ...card, marginTop: 16 }}>
-              <ChatList
-                jobId={id}
-                getTime={getTime}
-                onSeek={seek}
-                onFilter={onFilter}
-                onError={setToast}
-              />
+              <div
+                role="tablist"
+                aria-label="チャットとメモ"
+                style={{ display: "flex", gap: 8, marginBottom: 12 }}
+              >
+                {(["chat", "memo"] as const).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    role="tab"
+                    id={`tab-${k}`}
+                    aria-selected={tab === k}
+                    aria-controls={`panel-${k}`}
+                    tabIndex={tab === k ? 0 : -1}
+                    onClick={() => setTab(k)}
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+                        const next = k === "chat" ? "memo" : "chat";
+                        setTab(next);
+                        document.getElementById(`tab-${next}`)?.focus();
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      minHeight: 44,
+                      font: "inherit",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      borderRadius: "var(--radius)",
+                      border: `1px solid ${tab === k ? "var(--accent-line)" : "var(--line)"}`,
+                      background: tab === k ? "var(--accent-weak)" : "var(--surface)",
+                      color: tab === k ? "var(--accent-dark)" : "var(--text)",
+                    }}
+                  >
+                    {k === "chat" ? "チャット" : "メモ"}
+                  </button>
+                ))}
+              </div>
+              <div
+                role="tabpanel"
+                id="panel-chat"
+                aria-labelledby="tab-chat"
+                className="chat-list-wrap"
+                hidden={tab !== "chat"}
+              >
+                <ChatList
+                  jobId={id}
+                  getTime={getTime}
+                  onSeek={seek}
+                  onFilter={onFilter}
+                  onError={setToast}
+                />
+              </div>
+              <div
+                role="tabpanel"
+                id="panel-memo"
+                aria-labelledby="tab-memo"
+                className="chat-list-wrap"
+                hidden={tab !== "memo"}
+              >
+                <MemoPanel jobId={id} getTime={getTime} onSeek={seek} onError={setToast} />
+              </div>
             </aside>
           )}
         </div>

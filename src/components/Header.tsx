@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ThemeToggle } from "./ThemeToggle";
 
 /** 画面の一番上。左にロゴ（トップへの入口）。トップと分析画面で共通。 */
 export function Header() {
@@ -12,6 +13,7 @@ export function Header() {
           minHeight: 52,
           display: "flex",
           alignItems: "center",
+          justifyContent: "space-between",
         }}
       >
         <Link
@@ -29,6 +31,7 @@ export function Header() {
         >
           Cometrix
         </Link>
+        <ThemeToggle />
       </div>
     </header>
   );
