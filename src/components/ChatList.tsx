@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatTime } from "../lib/chart";
 import {
+  addRegex,
   addTerm,
   EMPTY_FILTER,
   type FILTER_KEYS,
@@ -21,29 +22,48 @@ const LIMIT = 100;
 const EDGE = 15;
 const FOLLOW_MS = 1000;
 
-const FIELDS: { key: (typeof FILTER_KEYS)[number]; label: string; exclude: boolean }[] = [
+const FIELDS: {
+  key: (typeof FILTER_KEYS)[number];
+  label: string;
+  exclude: boolean;
+  regex?: boolean;
+}[] = [
   { key: "q", label: "含めるワード", exclude: false },
   { key: "xq", label: "除外するワード", exclude: true },
   { key: "user", label: "含めるユーザー", exclude: false },
   { key: "xuser", label: "除外するユーザー", exclude: true },
+  { key: "re", label: "含める正規表現", exclude: false, regex: true },
+  { key: "xre", label: "除外する正規表現", exclude: true, regex: true },
 ];
+
+/** 正規表現を打たなくても入れられる、よく使う形（押すと入力欄に入る。追加するまで反映しない）。 */
+const PRESETS = [
+  { name: "数字だけ", pattern: "^[0-9]+$" },
+  { name: "URL", pattern: "https?://" },
+  { name: "1文字", pattern: "^.$" },
+  { name: "!コマンド", pattern: "^!" },
+  { name: "同じ字の繰り返し", pattern: "(.)\\1{3,}" },
+] as const;
 
 const REASON = {
   empty: "語を入力してください",
   duplicate: "すでに追加しています",
   full: `1種類に入れられるのは ${MAX_TERMS} 語までです`,
   long: `${MAX_TERM} 文字までです`,
+  invalid: "正規表現として読めません",
 } as const;
 
 /** 語を追加してチップで並べる欄。追加・削除はすぐ反映する（入力途中は反映しない）。 */
 function TermField({
   label,
   exclude,
+  regex = false,
   terms,
   onChange,
 }: {
   label: string;
   exclude: boolean;
+  regex?: boolean;
   terms: string[];
   onChange: (list: string[]) => void;
 }) {
@@ -51,7 +71,7 @@ function TermField({
   const [error, setError] = useState<string | null>(null);
   const full = terms.length >= MAX_TERMS;
   const add = () => {
-    const r = addTerm(terms, text);
+    const r = (regex ? addRegex : addTerm)(terms, text);
     if (!r.ok) {
       setError(REASON[r.reason]);
       return;
@@ -100,6 +120,34 @@ function TermField({
           追加
         </button>
       </div>
+      {regex && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {PRESETS.map((p) => (
+            <button
+              key={p.name}
+              type="button"
+              title={p.pattern}
+              disabled={full}
+              onClick={() => {
+                setText(p.pattern);
+                setError(null);
+              }}
+              style={{
+                minHeight: 44,
+                padding: "0 12px",
+                border: "1px solid var(--line)",
+                borderRadius: 16,
+                background: "var(--surface)",
+                color: "var(--text)",
+                cursor: "pointer",
+                font: "inherit",
+              }}
+            >
+              {p.name}
+            </button>
+          ))}
+        </div>
+      )}
       {(error || full) && <span role="alert">{error ?? REASON.full}</span>}
       {terms.length > 0 && (
         <ul
@@ -278,6 +326,7 @@ export function ChatList({
             key={fd.key}
             label={fd.label}
             exclude={fd.exclude}
+            regex={fd.regex}
             terms={applied[fd.key]}
             onChange={(list) => setApplied((cur) => ({ ...cur, [fd.key]: list }))}
           />
