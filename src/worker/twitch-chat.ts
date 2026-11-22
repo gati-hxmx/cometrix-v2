@@ -1,4 +1,5 @@
 import type { ChatMessage } from "../lib/buckets";
+import type { FetchProgress } from "../lib/progress";
 import { JobFailure } from "./errors";
 import type { ChatFetcher } from "./fetch-chat";
 
@@ -85,6 +86,7 @@ async function postJson(f: FetchLike, body: unknown, signal: AbortSignal): Promi
 export async function fetchTwitchComments(
   videoId: string,
   f: FetchLike = fetch,
+  onPage?: (lastOffsetSec: number) => void,
 ): Promise<ChatMessage[]> {
   const signal = AbortSignal.timeout(TOTAL_TIMEOUT_MS);
   const all: ChatMessage[] = [];
@@ -107,6 +109,8 @@ export async function fetchTwitchComments(
     const parsed = parseCommentsPage(page);
     if (!parsed.found) throw new JobFailure("video_unavailable");
     all.push(...parsed.messages);
+    const last = parsed.messages[parsed.messages.length - 1];
+    if (last) onPage?.(Math.floor(last.offsetMs / 1000));
     if (!parsed.next) return all;
     cursor = parsed.next;
   }
@@ -148,9 +152,36 @@ export async function fetchTwitchTitle(
   }
 }
 
-export const fetchWithTwitch: ChatFetcher = async (videoId) => {
+/** VOD の長さ（秒）を GraphQL で取る。進み具合の分母にするだけなので、取れなければ null。 */
+export async function fetchTwitchLength(
+  videoId: string,
+  f: FetchLike = fetch,
+): Promise<number | null> {
+  try {
+    const res = await f(GQL_URL, {
+      method: "POST",
+      headers: { "Client-ID": GQL_CLIENT_ID, "content-type": "application/json" },
+      body: JSON.stringify({
+        query: "query($id: ID!) { video(id: $id) { lengthSeconds } }",
+        variables: { id: videoId },
+      }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { data?: { video?: { lengthSeconds?: unknown } | null } };
+    const n = body.data?.video?.lengthSeconds;
+    return typeof n === "number" && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+export const fetchWithTwitch: ChatFetcher = async (videoId, _url, _platform, onProgress) => {
+  const durationSec = onProgress ? await fetchTwitchLength(videoId) : null;
+  const report = (fetchedSec: number) =>
+    onProgress?.({ stage: "fetching", fetchedSec, durationSec } satisfies FetchProgress);
   const [messages, title] = await Promise.all([
-    fetchTwitchComments(videoId),
+    fetchTwitchComments(videoId, fetch, report),
     fetchTwitchTitle(videoId),
   ]);
   return { title: title ?? `Twitch VOD ${videoId}`, messages };
