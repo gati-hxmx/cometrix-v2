@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import type { Bucket } from "../lib/chart";
+import { drawChart, IMAGE_H, IMAGE_W, type Palette } from "../lib/chart-image";
 import { clipsKey, parseClips } from "../lib/clip-ranges";
 import { chapterText, exportFileName, markerXml, ytDlpCommand } from "../lib/export";
 import type { TocEntry } from "../lib/toc";
@@ -18,6 +20,7 @@ export function ExportMenu({
   filtering,
   toc,
   unit,
+  graph,
   onDone,
   onError,
 }: {
@@ -31,6 +34,8 @@ export function ExportMenu({
   /** 今グラフに出している数の目次の山 */
   toc: TocEntry[];
   unit: string;
+  /** 今グラフに出している範囲（拡大していればその範囲）。画像で保存する（#69）。 */
+  graph: { heading: string; buckets: Bucket[]; combine: "sum" | "max" } | null;
   onDone: (text: string) => void;
   onError: (text: string) => void;
 }) {
@@ -111,6 +116,38 @@ export function ExportMenu({
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
 
+  const savePng = () => {
+    close(true);
+    if (!graph) return;
+    const canvas = document.createElement("canvas");
+    const scale = 2; // 投稿先で縮んでも読めるよう倍の細かさで描く
+    canvas.width = IMAGE_W * scale;
+    canvas.height = IMAGE_H * scale;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      onError("画像を作れませんでした。");
+      return;
+    }
+    ctx.scale(scale, scale);
+    const bucketSec =
+      graph.buckets.length > 1 ? graph.buckets[1].startSec - graph.buckets[0].startSec : 30;
+    drawChart(ctx, { title, unit, bucketSec, ...graph }, readPalette(graph.heading));
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        onError("画像を作れませんでした。");
+        return;
+      }
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = exportFileName(title, "png");
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      onDone("グラフを画像で保存しました。");
+    }, "image/png");
+  };
+
   const chapters = chapterText(toc, { unit, durationSec });
   const noClips = clipCount === 0 ? "「範囲」で切り抜きの範囲を足すと使えます" : null;
   const csvHref = `/api/jobs/${jobId}/export${filterQuery ? `?${filterQuery}` : ""}`;
@@ -164,6 +201,13 @@ export function ExportMenu({
             />
           </a>
           <MenuButton
+            icon="download"
+            text="グラフを画像で保存"
+            note="今見ている範囲を PNG で。X や切り抜きに"
+            disabledNote={graph ? null : "グラフが出てから使えます"}
+            onClick={savePng}
+          />
+          <MenuButton
             icon="copy"
             text="目次をチャプター文でコピー"
             note="YouTube の説明欄に貼れる形"
@@ -192,6 +236,21 @@ export function ExportMenu({
   );
 }
 
+/** 今の見た目（ライト・ダーク）の色を画像に使う。笑いの数は笑いの色の棒。 */
+function readPalette(heading: string): Palette {
+  const css = getComputedStyle(document.documentElement);
+  const v = (name: string) => css.getPropertyValue(name).trim();
+  return {
+    bg: v("--surface"),
+    text: v("--text"),
+    muted: v("--muted"),
+    line: v("--line"),
+    bar: heading.startsWith("笑い") ? v("--chart-2") : v("--chart-1"),
+    peak: v("--accent"),
+    font: getComputedStyle(document.body).fontFamily,
+  };
+}
+
 /** 「範囲」で足した切り抜きの範囲（ブラウザに保存、#58）。読めなければ空。 */
 function readClips(jobId: string) {
   try {
@@ -206,6 +265,7 @@ const row = {
   alignItems: "center",
   gap: 12,
   width: "100%",
+  boxSizing: "border-box",
   minHeight: 48,
   padding: "8px 12px",
   font: "inherit",
