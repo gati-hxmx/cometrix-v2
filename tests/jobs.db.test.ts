@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import * as schema from "../src/db/schema";
 import { chatBuckets, chatMessages, jobs } from "../src/db/schema";
 import { enqueue } from "../src/lib/jobs";
@@ -45,6 +45,7 @@ describe.skipIf(!url)("ジョブ処理（Postgres）", () => {
       title: "テスト配信",
       totalComments: 4,
       lastBucketSec: 90,
+      clips: [],
     });
     const buckets = await db
       .select()
@@ -100,6 +101,37 @@ describe.skipIf(!url)("ジョブ処理（Postgres）", () => {
     expect(await db.select().from(jobs)).toHaveLength(0);
   });
 
+  test("取得中は進み具合が result に入り、終わると集計結果に置き換わる（#43）", async () => {
+    const res = await enqueue(db, A);
+    if (!res.ok) throw new Error("enqueue failed");
+    let during: unknown = null;
+    await processNext(db, async (_id, _url, _p, onProgress) => {
+      onProgress?.({ stage: "fetching", fetchedSec: 60, durationSec: 120 });
+      // 書き込みは待たずに走るので、入るまで確かめ直す。
+      for (let i = 0; i < 100 && !during; i++) {
+        const [row] = await db.select().from(jobs).where(eq(jobs.id, res.id));
+        during = row.result;
+        if (!during) await new Promise((r) => setTimeout(r, 20));
+      }
+      return ok();
+    });
+    expect(during).toEqual({ progress: { stage: "fetching", fetchedSec: 60, durationSec: 120 } });
+    const [job] = await db.select().from(jobs).where(eq(jobs.id, res.id));
+    expect(job.status).toBe("done");
+    expect(job.result).toMatchObject({ totalComments: 4 });
+  });
+
+  test("失敗したら進み具合は残さない", async () => {
+    await enqueue(db, A);
+    await processNext(db, async (_id, _url, _p, onProgress) => {
+      onProgress?.({ stage: "fetching", fetchedSec: 60, durationSec: 120 });
+      throw new JobFailure("fetch_blocked");
+    });
+    const [job] = await db.select().from(jobs);
+    expect(job.status).toBe("failed");
+    expect(job.result).toBeNull();
+  });
+
   test("チャットがない・取得失敗は、理由つきの failed になる", async () => {
     await enqueue(db, A);
     await processNext(db, async () => ({ title: "x", messages: [] }));
@@ -128,11 +160,48 @@ describe.skipIf(!url)("ジョブ処理（Postgres）", () => {
 
   test("同時に拾っても、同じジョブを二重に取らない", async () => {
     for (let i = 0; i < 5; i++) await db.insert(jobs).values({ url: A, videoId: `vvvvvvvvvv${i}` });
-    const claimed = await Promise.all(Array.from({ length: 8 }, () => claimJob(db)));
+    const claimed = await Promise.all(Array.from({ length: 8 }, () => claimJob(db, 100)));
     const ids = claimed.filter((c) => c).map((c) => c?.id);
     expect(ids).toHaveLength(5);
     expect(new Set(ids).size).toBe(5);
   });
+
+  test("running が上限に達していれば拾わず、減れば拾える", async () => {
+    for (let i = 0; i < 4; i++) await db.insert(jobs).values({ url: A, videoId: `cccccccccc${i}` });
+    const first = await claimJob(db, 2);
+    const second = await claimJob(db, 2);
+    expect(first && second).toBeTruthy();
+    expect(await claimJob(db, 2)).toBeNull();
+    if (!first) throw new Error("claim failed");
+    await db.update(jobs).set({ status: "done" }).where(eq(jobs.id, first.id));
+    expect(await claimJob(db, 2)).not.toBeNull();
+  });
+
+  test("未完了が上限なら新しい動画は断り、あるものは返す。上限未満なら受け付ける", async () => {
+    vi.stubEnv("MAX_PENDING_JOBS", "3");
+    try {
+      await db.insert(jobs).values({ url: A, videoId: "ddddddddddd" });
+      await db.insert(jobs).values({ url: A, videoId: "eeeeeeeeeee", status: "running" });
+      // 2件のとき（上限3の未満）は受け付ける
+      const ok1 = await enqueue(db, A);
+      expect(ok1.ok).toBe(true);
+      // 3件になったので断る
+      expect(await enqueue(db, B)).toEqual({ ok: false, code: "busy" });
+      expect(await jobs_count()).toBe(3);
+      // すでにある動画は返す
+      const again = await enqueue(db, A);
+      expect(again.ok && again.created === false).toBe(true);
+      // done や failed は数えない
+      await db.update(jobs).set({ status: "done" }).where(eq(jobs.videoId, "ddddddddddd"));
+      expect((await enqueue(db, B)).ok).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  async function jobs_count() {
+    return (await db.select().from(jobs)).length;
+  }
 
   test("再処理しても、コメントと集計が重複しない", async () => {
     const res = await enqueue(db, A);

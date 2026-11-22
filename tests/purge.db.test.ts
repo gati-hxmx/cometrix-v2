@@ -5,6 +5,7 @@ import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import * as schema from "../src/db/schema";
 import { chatBuckets, chatMessages, jobs } from "../src/db/schema";
+import { reanalyze } from "../src/lib/jobs";
 import { purgeStale } from "../src/lib/purge";
 
 const url = process.env.TEST_DATABASE_URL;
@@ -148,5 +149,19 @@ describe.skipIf(!url)("古い分析の掃除（Postgres）", () => {
   test("API：存在しない ID は 404 で何も書かない", async () => {
     const res = await jobApi(new Request("http://x/"), ctx("00000000-0000-4000-8000-000000000000"));
     expect(res.status).toBe(404);
+  });
+
+  test("掃除済みの分析をもう一度分析すると、掃除の印が消えて普通の分析に戻る（#99 との組み合わせ）", async () => {
+    const id = await seed({ createdDaysAgo: 100 });
+    expect(await purgeStale(db, { days: 90 })).toBe(1);
+    await db
+      .update(jobs)
+      .set({ updatedAt: dsql`now() - interval '1 hour'` as never })
+      .where(eq(jobs.id, id));
+    expect(await reanalyze(db, id)).toEqual({ ok: true, id });
+    const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
+    expect(job.status).toBe("queued");
+    expect(job.messagesPurgedAt).toBeNull();
+    expect(job.lastOpenedAt).toBeNull();
   });
 });

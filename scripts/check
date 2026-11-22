@@ -104,6 +104,9 @@ else
   echo "  （PyYAML が無いので省略）"
 fi
 
+step "デザインのルールの機械チェック（scripts/design-lint）"
+python3 scripts/design-lint || failed=1
+
 step "設定ファイルの JSON"
 python3 -m json.tool .claude/settings.json >/dev/null || { echo "  ✗ .claude/settings.json が JSON として読めません"; failed=1; }
 
