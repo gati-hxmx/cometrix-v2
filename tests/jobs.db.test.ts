@@ -106,9 +106,12 @@ describe.skipIf(!url)("ジョブ処理（Postgres）", () => {
     let during: unknown = null;
     await processNext(db, async (_id, _url, _p, onProgress) => {
       onProgress?.({ stage: "fetching", fetchedSec: 60, durationSec: 120 });
-      await new Promise((r) => setTimeout(r, 50));
-      const [row] = await db.select().from(jobs).where(eq(jobs.id, res.id));
-      during = row.result;
+      // 書き込みは待たずに走るので、入るまで確かめ直す。
+      for (let i = 0; i < 100 && !during; i++) {
+        const [row] = await db.select().from(jobs).where(eq(jobs.id, res.id));
+        during = row.result;
+        if (!during) await new Promise((r) => setTimeout(r, 20));
+      }
       return ok();
     });
     expect(during).toEqual({ progress: { stage: "fetching", fetchedSec: 60, durationSec: 120 } });
@@ -121,7 +124,6 @@ describe.skipIf(!url)("ジョブ処理（Postgres）", () => {
     await enqueue(db, A);
     await processNext(db, async (_id, _url, _p, onProgress) => {
       onProgress?.({ stage: "fetching", fetchedSec: 60, durationSec: 120 });
-      await new Promise((r) => setTimeout(r, 50));
       throw new JobFailure("fetch_blocked");
     });
     const [job] = await db.select().from(jobs);

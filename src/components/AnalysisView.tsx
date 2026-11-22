@@ -96,7 +96,6 @@ function FetchProgressBar({ progress }: { progress: FetchProgress }) {
         </div>
       )}
       <p
-        aria-live="polite"
         style={{
           margin: "6px 0 0",
           fontSize: 13,
@@ -107,6 +106,21 @@ function FetchProgressBar({ progress }: { progress: FetchProgress }) {
       >
         {progressLabel(progress)}
       </p>
+      {/* 数字は2〜3秒ごとに変わるので読み上げず、段階が変わったときだけ知らせる。 */}
+      <span
+        aria-live="polite"
+        style={{
+          position: "absolute",
+          width: 1,
+          height: 1,
+          overflow: "hidden",
+          clip: "rect(0 0 0 0)",
+        }}
+      >
+        {progress.stage === "saving"
+          ? "取得が終わりました。集計して保存しています"
+          : "チャットを取得しています"}
+      </span>
     </div>
   );
 }

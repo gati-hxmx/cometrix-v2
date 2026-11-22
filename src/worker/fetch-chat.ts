@@ -86,7 +86,9 @@ export const fetchWithYtDlp: ChatFetcher = async (_videoId, url, _platform, onPr
         let durationSec: number | null = null;
         child.stdout?.on("data", (d) => {
           printed += String(d);
-          durationSec = parseDuration(printed.split("\n")[1]);
+          // 2行目が改行まで届いてから読む（途中で切れた数を長さにしない）。
+          const lines = printed.split("\n");
+          if (lines.length > 2) durationSec = parseDuration(lines[1]);
         });
         timer = setInterval(async () => {
           const sec = lastOffsetSec(await readTail(`${out}.part`));

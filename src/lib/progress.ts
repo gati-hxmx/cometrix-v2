@@ -15,7 +15,7 @@ export type FetchProgress = {
 /** yt-dlp の live_chat.json（1行1JSON）の末尾の断片から、最後のコメントの時刻（秒）を読む。 */
 export function lastOffsetSec(tail: string): number | null {
   let last: string | null = null;
-  for (const m of tail.matchAll(/"videoOffsetTimeMsec":\s*"?(\d+)/g)) last = m[1];
+  for (const m of tail.matchAll(/"videoOffsetTimeMsec":\s*"(\d+)"/g)) last = m[1];
   return last === null ? null : Math.floor(Number(last) / 1000);
 }
 

@@ -14,7 +14,7 @@ describe("取得の進み具合（#43）", () => {
       '…途中で切れた行"}}',
       '{"replayChatItemAction":{"actions":[],"videoOffsetTimeMsec":"61000"}}',
       '{"replayChatItemAction":{"actions":[],"videoOffsetTimeMsec":"5025999"}}',
-      '{"replayChatItemAction":{"actions":[],"videoOffsetTimeM',
+      '{"replayChatItemAction":{"actions":[],"videoOffsetTimeMsec":"50',
     ].join("\n");
     expect(lastOffsetSec(tail)).toBe(5025);
     expect(lastOffsetSec("")).toBeNull();
