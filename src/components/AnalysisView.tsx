@@ -752,6 +752,9 @@ export function AnalysisView({ id }: { id: string }) {
                     style={{
                       flex: 1,
                       minHeight: 44,
+                      // 札の名前は折り返さない（「チャッ／ト」にならないよう左右の余白を詰める。#114）
+                      padding: "0 4px",
+                      whiteSpace: "nowrap",
                       font: "inherit",
                       fontWeight: 700,
                       cursor: "pointer",
