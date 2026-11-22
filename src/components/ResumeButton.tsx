@@ -13,7 +13,7 @@ export function ResumeButton({ sec, onPlay }: { sec: number; onPlay: () => void 
         border: "none",
         borderRadius: "var(--radius)",
         background: "var(--accent)",
-        color: "#fff",
+        color: "var(--on-accent)",
         font: "inherit",
         fontWeight: 700,
         cursor: "pointer",
