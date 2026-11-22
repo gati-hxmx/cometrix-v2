@@ -1,16 +1,23 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Bucket } from "../lib/chart";
 import { EMPTY_FILTER, filterParams, isFiltering } from "../lib/chat-filter";
+import { cleanClips } from "../lib/clips";
 import type { Donation } from "../lib/donations";
+import { LEAD_DEFAULT, LEAD_KEY, type Lead, leadTarget, parseLead } from "../lib/lead";
 import { type FetchProgress, progressLabel, progressPercent } from "../lib/progress";
 import { BucketChart } from "./BucketChart";
 import { ChatList, type Filter } from "./ChatList";
+import { ClipPanel } from "./ClipPanel";
+import { KeywordLines } from "./KeywordLines";
 import { MemoPanel } from "./MemoPanel";
 import { PlaybackBar } from "./PlaybackBar";
+import { ReanalyzeButton } from "./ReanalyzeButton";
 import { Segmented } from "./Segmented";
 import { Toast } from "./Toast";
+import { TocPanel } from "./TocPanel";
 import { TwitchPlayer } from "./TwitchPlayer";
 import { UrlForm } from "./UrlForm";
 import { type PlayerHandle, YoutubePlayer } from "./YoutubePlayer";
@@ -19,9 +26,11 @@ type Job = {
   status: "queued" | "running" | "done" | "failed";
   platform?: "youtube" | "twitch";
   videoId?: string | null;
-  result?: { videoId: string; title: string; totalComments: number } | null;
+  result?: { videoId: string; title: string; totalComments: number; clips?: unknown } | null;
   error?: { code: string; message: string } | null;
   progress?: FetchProgress | null;
+  /** done／failed のとき、あと何秒で分析し直せるか（#99）。 */
+  retryAfterSec?: number | null;
 };
 type State =
   | { kind: "loading" }
@@ -29,9 +38,20 @@ type State =
   | { kind: "job"; job: Job; buckets: Bucket[] | null };
 
 const POLL_MS = 3000;
+const TABS = [
+  { key: "chat", name: "チャット" },
+  { key: "memo", name: "メモ" },
+  { key: "toc", name: "目次" },
+  { key: "clip", name: "範囲" },
+] as const;
+type Tab = (typeof TABS)[number]["key"];
 const SERIES = [
   { key: "all", name: "すべて" },
   { key: "laugh", name: "笑い" },
+] as const;
+const SPAM = [
+  { key: "on", name: "スパム除外" },
+  { key: "off", name: "除外なし" },
 ] as const;
 const card = {
   background: "var(--surface)",
@@ -130,22 +150,34 @@ function FetchProgressBar({ progress }: { progress: FetchProgress }) {
 export function AnalysisView({ id }: { id: string }) {
   const [state, setState] = useState<State>({ kind: "loading" });
   const [toast, setToast] = useState<string | null>(null);
+  // 分析し直したあとにポーリングを再開するための番号（#99）。
+  const [reload, setReload] = useState(0);
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const router = useRouter();
   const player = useRef<PlayerHandle>(null);
   const playerBox = useRef<HTMLDivElement>(null);
   const closeToast = useCallback(() => setToast(null), []);
   const [filter, setFilter] = useState<Filter>(EMPTY_FILTER);
-  const [tab, setTab] = useState<"chat" | "memo">("chat");
+  const [tab, setTab] = useState<Tab>("chat");
+  const [pickMode, setPickMode] = useState(false);
+  const [picked, setPicked] = useState<{ start: number; end: number; n: number } | null>(null);
+  const [mark, setMark] = useState<{ start: number; end: number } | null>(null);
   const [filtered, setFiltered] = useState<Bucket[] | null>(null);
   const [donations, setDonations] = useState<Donation[]>([]);
   const [series, setSeries] = useState<"all" | "laugh">("all");
   const laugh = series === "laugh";
+  const [terms, setTerms] = useState<string[]>([]);
+  // 言葉ごとの数（読み込めたものだけ）。言葉を外しても、同じ言葉を足し直したときに使い回す。
+  const [termData, setTermData] = useState<Record<string, Bucket[]>>({});
+  const [spamMode, setSpamMode] = useState<"on" | "off">("on");
+  const spam = spamMode === "on";
   const onFilter = useCallback((f: Filter) => setFilter(f), []);
   const getTime = useCallback(() => player.current?.getTime() ?? 0, []);
   const filtering = isFiltering(filter);
   const isDone = state.kind === "job" && state.job.status === "done";
 
   // 絞り込み中・笑いを選んだときは、一致したコメントの数でグラフを描き直す。
-  const recount = filtering || laugh;
+  const recount = filtering || laugh || spam;
   useEffect(() => {
     if (!recount || !isDone) {
       setFiltered(null);
@@ -156,6 +188,7 @@ export function AnalysisView({ id }: { id: string }) {
     setFiltered(null);
     const p = filterParams(filter);
     if (laugh) p.set("laugh", "1");
+    if (spam) p.set("spam", "1");
     fetch(`/api/jobs/${id}/buckets?${p}`, { cache: "no-store" })
       .then((r) => {
         if (!r.ok) throw new Error(String(r.status));
@@ -168,13 +201,15 @@ export function AnalysisView({ id }: { id: string }) {
           setToast(
             laugh
               ? "笑いのグラフを読み込めませんでした。"
-              : "絞り込んだグラフを読み込めませんでした。",
+              : filtering
+                ? "絞り込んだグラフを読み込めませんでした。"
+                : "グラフを読み込めませんでした。",
           ),
       );
     return () => {
       stale = true;
     };
-  }, [filter, recount, laugh, isDone, id]);
+  }, [filter, recount, laugh, spam, isDone, id, filtering]);
 
   // 投げ銭の印（#57）。読めなくても分析は使えるので、失敗は黙って印なしにする。
   useEffect(() => {
@@ -189,6 +224,28 @@ export function AnalysisView({ id }: { id: string }) {
     };
   }, [isDone, id]);
 
+  // 重ねる言葉ごとに、その言葉を含むコメントの数を読む（#53）。読み込み中の言葉は二重に読まない。
+  const loading = useRef(new Set<string>());
+  useEffect(() => {
+    if (!isDone) return;
+    for (const t of terms) {
+      if (termData[t] || loading.current.has(t)) continue;
+      loading.current.add(t);
+      fetch(`/api/jobs/${id}/buckets?${new URLSearchParams({ term: t })}`, { cache: "no-store" })
+        .then((r) => {
+          if (!r.ok) throw new Error(String(r.status));
+          return r.json() as Promise<Bucket[]>;
+        })
+        .then((b) => setTermData((d) => ({ ...d, [t]: b })))
+        .catch(() => {
+          setToast(`「${t}」の数を読み込めませんでした。`);
+          setTerms((l) => l.filter((x) => x !== t));
+        })
+        .finally(() => loading.current.delete(t));
+    }
+  }, [terms, termData, isDone, id]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reload は分析し直し後にポーリングを始め直すための合図
   useEffect(() => {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -226,7 +283,49 @@ export function AnalysisView({ id }: { id: string }) {
       stopped = true;
       clearTimeout(timer);
     };
-  }, [id]);
+  }, [id, reload]);
+
+  const reanalyze = useCallback(async () => {
+    setReanalyzing(true);
+    try {
+      const res = await fetch(`/api/jobs/${id}/reanalyze`, { method: "POST" });
+      if (res.ok) {
+        setFiltered(null);
+        setSeries("all");
+        setState({ kind: "loading" });
+        setReload((n) => n + 1);
+        return;
+      }
+      const body = (await res.json().catch(() => null)) as {
+        id?: string;
+        error?: { code?: string; message?: string };
+      } | null;
+      if (body?.error?.code === "duplicate" && body.id) router.push(`/analysis/${body.id}`);
+      else setToast(body?.error?.message ?? "分析し直せませんでした。");
+    } catch {
+      setToast("分析し直せませんでした。通信を確かめて、もう一度お試しください。");
+    } finally {
+      setReanalyzing(false);
+    }
+  }, [id, router]);
+
+  // 棒を押したときだけ、山の少し前から再生する。選んだ値はブラウザに覚える。
+  const [lead, setLeadState] = useState<Lead>(LEAD_DEFAULT);
+  useEffect(() => {
+    try {
+      setLeadState(parseLead(localStorage.getItem(LEAD_KEY)));
+    } catch {
+      // 保存が使えなくても初期値で動く
+    }
+  }, []);
+  const setLead = useCallback((v: Lead) => {
+    setLeadState(v);
+    try {
+      localStorage.setItem(LEAD_KEY, String(v));
+    } catch {
+      // 保存できなくても、その場の選択は効く
+    }
+  }, []);
 
   const seek = useCallback((sec: number) => {
     player.current?.seek(sec);
@@ -237,6 +336,8 @@ export function AnalysisView({ id }: { id: string }) {
         box.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, []);
+
+  const seekPeak = useCallback((sec: number) => seek(leadTarget(sec, lead)), [seek, lead]);
 
   if (state.kind === "notfound") {
     return (
@@ -260,6 +361,17 @@ export function AnalysisView({ id }: { id: string }) {
 
   const matched = filtered ? filtered.reduce((sum, b) => sum + b.count, 0) : null;
   const total = done?.result?.totalComments ?? 0;
+  const lineColors = laugh
+    ? ["var(--chart-3)", "var(--chart-4)"]
+    : ["var(--chart-2)", "var(--chart-3)"];
+  const keywordItems = terms.map((term, i) => ({
+    term,
+    color: lineColors[i],
+    count: termData[term] ? termData[term].reduce((sum, b) => sum + b.count, 0) : null,
+  }));
+  const lines = keywordItems.flatMap((k) =>
+    termData[k.term] ? [{ term: k.term, color: k.color, buckets: termData[k.term] }] : [],
+  );
 
   return (
     <main className="analysis" style={{ maxWidth: 1240, margin: "0 auto", padding: "16px" }}>
@@ -276,6 +388,13 @@ export function AnalysisView({ id }: { id: string }) {
           <Link href="/" style={backLink}>
             別の URL で分析し直す
           </Link>
+          {job.retryAfterSec != null && (
+            <ReanalyzeButton
+              retryAfterSec={job.retryAfterSec}
+              onConfirm={reanalyze}
+              busy={reanalyzing}
+            />
+          )}
         </div>
       )}
 
@@ -286,7 +405,7 @@ export function AnalysisView({ id }: { id: string }) {
           </div>
           <section style={{ ...card, marginTop: 16 }}>
             <h2 style={{ fontSize: 16, margin: "0 0 8px" }}>コメント数（30秒ごと）</h2>
-            <BucketChart buckets={[]} onSeek={seek} />
+            <BucketChart buckets={[]} onSeek={seekPeak} />
           </section>
         </>
       )}
@@ -306,6 +425,13 @@ export function AnalysisView({ id }: { id: string }) {
                     : "チャットを取得して集計しています。長い配信では数分かかります。"}
               </p>
               {waiting && job?.progress && <FetchProgressBar progress={job.progress} />}
+              {done && done.retryAfterSec != null && (
+                <ReanalyzeButton
+                  retryAfterSec={done.retryAfterSec}
+                  onConfirm={reanalyze}
+                  busy={reanalyzing}
+                />
+              )}
             </section>
 
             <div ref={playerBox} style={{ marginTop: 16, scrollMarginTop: 8 }}>
@@ -338,12 +464,28 @@ export function AnalysisView({ id }: { id: string }) {
                   {laugh && filtered !== null ? "笑いの数（30秒ごと）" : "コメント数（30秒ごと）"}
                 </h2>
                 {done?.result && (
-                  <Segmented
-                    label="グラフに出すコメント"
-                    options={SERIES}
-                    value={series}
-                    onChange={setSeries}
-                  />
+                  <div
+                    style={{
+                      marginLeft: "auto",
+                      display: "flex",
+                      flexWrap: "wrap",
+                      justifyContent: "flex-end",
+                      gap: 8,
+                    }}
+                  >
+                    <Segmented
+                      label="スパム（連投・長いコピペ）"
+                      options={SPAM}
+                      value={spamMode}
+                      onChange={setSpamMode}
+                    />
+                    <Segmented
+                      label="グラフに出すコメント"
+                      options={SERIES}
+                      value={series}
+                      onChange={setSeries}
+                    />
+                  </div>
                 )}
               </div>
               {recount && matched !== null && (
@@ -352,25 +494,36 @@ export function AnalysisView({ id }: { id: string }) {
                   style={{ margin: "0 0 8px", color: "var(--muted)", fontSize: 13 }}
                 >
                   {filtering ? "絞り込み中：" : ""}
-                  {laugh ? "笑い" : "一致"} {matched.toLocaleString("ja-JP")} / 全{" "}
-                  {total.toLocaleString("ja-JP")} 件
+                  {spam ? "スパム除外・" : ""}
+                  {laugh ? "笑い" : filtering ? "一致" : "数えた"} {matched.toLocaleString("ja-JP")}{" "}
+                  / 全 {total.toLocaleString("ja-JP")} 件
                 </p>
               )}
               {state.kind === "job" && state.buckets ? (
                 <BucketChart
                   key={id}
                   buckets={recount && filtered ? filtered : state.buckets}
-                  onSeek={seek}
+                  onSeek={seekPeak}
                   getTime={getTime}
                   filtered={filtering && filtered !== null}
                   laugh={laugh && filtered !== null}
                   donations={donations}
+                  pickRange={pickMode && tab === "clip"}
+                  onPickRange={(a, b) =>
+                    setPicked((p) => ({ start: a, end: b, n: (p?.n ?? 0) + 1 }))
+                  }
+                  mark={mark}
+                  clips={cleanClips(done?.result?.clips)}
+                  lines={lines}
                 />
               ) : (
                 <div
                   aria-hidden
                   style={{ height: 162, background: "var(--surface-2)", borderRadius: 6 }}
                 />
+              )}
+              {done?.result && (
+                <KeywordLines items={keywordItems} total={total} onChange={setTerms} />
               )}
             </section>
 
@@ -380,6 +533,8 @@ export function AnalysisView({ id }: { id: string }) {
                 bucketCount={state.kind === "job" && state.buckets ? state.buckets.length : 0}
                 getTime={getTime}
                 onSeek={seek}
+                lead={lead}
+                onLead={setLead}
                 enabled
               />
             )}
@@ -388,10 +543,10 @@ export function AnalysisView({ id }: { id: string }) {
             <aside className="analysis-chat" style={{ ...card, marginTop: 16 }}>
               <div
                 role="tablist"
-                aria-label="チャットとメモ"
+                aria-label="チャット・メモ・目次・範囲"
                 style={{ display: "flex", gap: 8, marginBottom: 12 }}
               >
-                {(["chat", "memo"] as const).map((k) => (
+                {TABS.map(({ key: k, name }) => (
                   <button
                     key={k}
                     type="button"
@@ -403,7 +558,9 @@ export function AnalysisView({ id }: { id: string }) {
                     onClick={() => setTab(k)}
                     onKeyDown={(e) => {
                       if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-                        const next = k === "chat" ? "memo" : "chat";
+                        const at = TABS.findIndex((t) => t.key === k);
+                        const step = e.key === "ArrowRight" ? 1 : TABS.length - 1;
+                        const next = TABS[(at + step) % TABS.length].key;
                         setTab(next);
                         document.getElementById(`tab-${next}`)?.focus();
                       }
@@ -420,7 +577,7 @@ export function AnalysisView({ id }: { id: string }) {
                       color: tab === k ? "var(--accent-dark)" : "var(--text)",
                     }}
                   >
-                    {k === "chat" ? "チャット" : "メモ"}
+                    {name}
                   </button>
                 ))}
               </div>
@@ -448,6 +605,37 @@ export function AnalysisView({ id }: { id: string }) {
                 hidden={tab !== "memo"}
               >
                 <MemoPanel jobId={id} getTime={getTime} onSeek={seek} onError={setToast} />
+              </div>
+              <div
+                role="tabpanel"
+                id="panel-toc"
+                aria-labelledby="tab-toc"
+                className="chat-list-wrap"
+                hidden={tab !== "toc"}
+              >
+                <TocPanel
+                  buckets={recount ? filtered : state.kind === "job" ? state.buckets : null}
+                  laugh={laugh}
+                  getTime={getTime}
+                  onSeek={seekPeak}
+                />
+              </div>
+              <div
+                role="tabpanel"
+                id="panel-clip"
+                aria-labelledby="tab-clip"
+                className="chat-list-wrap"
+                hidden={tab !== "clip"}
+              >
+                <ClipPanel
+                  jobId={id}
+                  getTime={getTime}
+                  onSeek={seek}
+                  onError={setToast}
+                  picked={picked}
+                  onPickMode={setPickMode}
+                  onMark={setMark}
+                />
               </div>
             </aside>
           )}

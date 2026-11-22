@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { connect } from "../db/client";
 import { chatBuckets, chatMessages, jobs } from "../db/schema";
 import { bucketize, inVideo } from "../lib/buckets";
+import { maxConcurrentFetch } from "../lib/limits";
 import type { FetchProgress } from "../lib/progress";
 import { parseVideoUrl } from "../lib/youtube-url";
 import { FAILURE_MESSAGES, type FailureCode, JobFailure } from "./errors";
@@ -24,11 +25,15 @@ const stillMine = (job: ClaimedJob) =>
 
 class StaleClaim extends Error {}
 
-/** queued のジョブを古い順に1件 running にして返す。複数のワーカーが同時に呼んでも同じジョブは返らない。 */
-export async function claimJob(db: Db) {
+/**
+ * queued のジョブを古い順に1件 running にして返す。複数のワーカーが同時に呼んでも同じジョブは返らない。
+ * running が maxRunning 以上のときは拾わない（ワーカーが同時に拾う瞬間は、1〜2件超えることがある）。
+ */
+export async function claimJob(db: Db, maxRunning = maxConcurrentFetch()) {
   const rows = await db.execute(sql`
     update jobs set status = 'running', attempts = attempts + 1, updated_at = now()
     where id = (select id from jobs where status = 'queued' order by created_at, id limit 1 for update skip locked)
+      and (select count(*) from jobs where status = 'running') < ${maxRunning}
     returning id, url, attempts`);
   return (rows[0] as ClaimedJob | undefined) ?? null;
 }
@@ -103,7 +108,7 @@ export async function runJob(db: Db, job: ClaimedJob, fetchChat: ChatFetcher) {
     const parsed = parseVideoUrl(job.url);
     if (!parsed.ok) throw new JobFailure("invalid_url");
     let lastProgress: FetchProgress | null = null;
-    const { title, messages } = await fetchChat(
+    const { title, messages, clips } = await fetchChat(
       parsed.videoId,
       parsed.url,
       parsed.platform,
@@ -156,6 +161,7 @@ export async function runJob(db: Db, job: ClaimedJob, fetchChat: ChatFetcher) {
             platform: parsed.platform,
             videoId: parsed.videoId,
             title,
+            clips: clips ?? [],
             totalComments: valid.length,
             lastBucketSec: buckets[buckets.length - 1].startSec,
           },

@@ -12,6 +12,7 @@ import {
   valueTicks,
   zoomRange,
 } from "../lib/chart-range";
+import type { Clip } from "../lib/clips";
 import { type Donation, groupDonations, kindText } from "../lib/donations";
 
 const MAX_BARS = 120;
@@ -19,6 +20,7 @@ const HEIGHT = 140;
 const AXIS_LEFT = 36;
 const AXIS_BOTTOM = 22;
 const AXIS_RIGHT = 16;
+const AXIS_RIGHT_LINES = 36;
 const DRAG_THRESHOLD = 4;
 
 const stepButton = {
@@ -50,6 +52,11 @@ export function BucketChart({
   filtered = false,
   laugh = false,
   donations = [],
+  pickRange = false,
+  onPickRange,
+  mark = null,
+  clips = [],
+  lines = [],
 }: {
   buckets: Bucket[];
   onSeek: (sec: number) => void;
@@ -61,6 +68,16 @@ export function BucketChart({
   laugh?: boolean;
   /** 投げ銭（#57）。あればグラフの上に印を出し、押すとその時刻へ飛ぶ。 */
   donations?: Donation[];
+  /** 範囲をなぞって選ぶ（#58）。入れている間、グラフの上のなぞりは範囲の選択になる。 */
+  pickRange?: boolean;
+  /** なぞり終えたときの始点・終点（秒、小さい順・1秒単位）。 */
+  onPickRange?: (startSec: number, endSec: number) => void;
+  /** 薄く示しておく範囲（秒）。なぞっている間は、なぞっている範囲が優先される。 */
+  mark?: { start: number; end: number } | null;
+  /** Twitch のクリップ（#60）。グラフの上の帯に印を出し、押すとその時刻から再生する。 */
+  clips?: Clip[];
+  /** 重ねる言葉の線（#53）。棒と同じ区間の数。縦軸は右側に別に取る。 */
+  lines?: { term: string; color: string; buckets: Bucket[] }[];
 }) {
   const total = buckets.length;
   // 選んだ棒は元の区間の番号で持つ（拡大・移動しても同じ棒を指す）。
@@ -69,6 +86,7 @@ export function BucketChart({
   const [markHover, setMarkHover] = useState<number | null>(null);
   const [rangeState, setRangeState] = useState<Range | null>(null);
   const [playSec, setPlaySec] = useState(0);
+  const [clipId, setClipId] = useState<string | null>(null);
   const plot = useRef<HTMLDivElement>(null);
   const [plotWidth, setPlotWidth] = useState(0);
   // 指で選んだ直後に来る click で、別の棒を選び直さないための印。
@@ -83,6 +101,9 @@ export function BucketChart({
   const multi = useRef(false);
   const drag = useRef<{ x: number; range: Range; moved: boolean; id: number } | null>(null);
   const dragged = useRef(false);
+  // 範囲をなぞっている間の、始点と今の位置（秒）。
+  const [sweep, setSweep] = useState<{ from: number; to: number } | null>(null);
+  const sweepId = useRef<number | null>(null);
 
   const full: Range = { start: 0, end: total };
   // 操作中の範囲は小数のまま持ち（少しずつの拡大・移動を積み重ねられる）、表示と棒の番号は整数にそろえる。
@@ -94,6 +115,12 @@ export function BucketChart({
   const group = Math.max(1, Math.ceil(view.length / MAX_BARS));
   const peak = peakIndex(bars);
   const top = valueTicks(Math.max(1, ...bars.map((b) => b.count))).at(-1) ?? 1;
+  // 言葉の線：棒と同じ範囲・同じまとめ方で数え、右の軸は言葉の最大値に合わせる。
+  const lineBars = lines.map((l) =>
+    groupBuckets(l.buckets.slice(range.start, range.end), MAX_BARS),
+  );
+  const lineTop =
+    valueTicks(Math.max(1, ...lineBars.flatMap((b) => b.map((x) => x.count)))).at(-1) ?? 1;
   const barOf = (raw: number | null) =>
     raw === null || raw < range.start || raw >= range.end
       ? null
@@ -186,6 +213,45 @@ export function BucketChart({
     const r = rect();
     return r ? indexAtX(e.clientX - r.left, r.width, bars.length) : -1;
   };
+
+  const secAt = (clientX: number) => {
+    const r = rect();
+    if (!r || r.width <= 0) return fromSec;
+    const f = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+    return Math.floor(fromSec + f * (toSec - fromSec));
+  };
+  const sweepDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (sweepId.current !== null) return;
+    sweepId.current = e.pointerId;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const t = secAt(e.clientX);
+    setSweep({ from: t, to: t });
+  };
+  const sweepMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerId !== sweepId.current) return;
+    const t = secAt(e.clientX);
+    setSweep((s) => (s ? { ...s, to: t } : s));
+  };
+  const sweepUp = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerId !== sweepId.current) return;
+    sweepId.current = null;
+    const s = sweep;
+    const t = secAt(e.clientX);
+    setSweep(null);
+    if (!s) return;
+    const [a, b] = s.from <= t ? [s.from, t] : [t, s.from];
+    // 押しただけ（幅が 1 秒もない）は範囲にしない。
+    if (b > a) onPickRange?.(a, b);
+  };
+  const sweepCancel = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerId !== sweepId.current) return;
+    sweepId.current = null;
+    setSweep(null);
+  };
+  const shade = sweep
+    ? { start: Math.min(sweep.from, sweep.to), end: Math.max(sweep.from, sweep.to) }
+    : mark;
 
   const startGesture = () => {
     const [a, b] = [...pointers.current.values()];
@@ -288,7 +354,15 @@ export function BucketChart({
   const yTicks = valueTicks(Math.max(1, ...bars.map((b) => b.count)));
   const countText = (n: number) =>
     laugh ? `笑い ${n} 件` : filtered ? `一致 ${n} 件` : `${n} コメント`;
-  const label = (b: Bucket) => `${formatTime(b.startSec)} から ${countText(b.count)}`;
+  const termText = (i: number) =>
+    lines
+      .map((l, k) => `「${l.term}」${(lineBars[k][i]?.count ?? 0).toLocaleString("ja-JP")} 件`)
+      .join("・");
+  const detail = (b: Bucket, i: number) =>
+    lines.length > 0 ? `${countText(b.count)}・${termText(i)}` : countText(b.count);
+  const label = (b: Bucket, i: number) => `${formatTime(b.startSec)} から ${detail(b, i)}`;
+  const visibleClips = clips.filter((c) => c.offsetSec >= fromSec && c.offsetSec < toSec);
+  const openClip = clips.find((c) => c.id === clipId) ?? null;
   const playX = playSec > 0 && playSec >= fromSec && playSec < toSec ? xOf(playSec) : null;
 
   return (
@@ -314,7 +388,7 @@ export function BucketChart({
           }}
         >
           {shownBar
-            ? `${formatTime(shownBar.startSec)} から ・ ${countText(shownBar.count)}`
+            ? `${formatTime(shownBar.startSec)} から ・ ${detail(shownBar, shown as number)}`
             : "棒を押すと、その時刻から再生します"}
         </p>
         <button
@@ -331,7 +405,7 @@ export function BucketChart({
         style={{
           position: "relative",
           marginLeft: AXIS_LEFT,
-          marginRight: AXIS_RIGHT,
+          marginRight: lines.length > 0 ? AXIS_RIGHT_LINES : AXIS_RIGHT,
           marginTop: 20,
           marginBottom: AXIS_BOTTOM,
           height: HEIGHT,
@@ -420,7 +494,7 @@ export function BucketChart({
             <button
               key={b.startSec}
               type="button"
-              aria-label={label(b)}
+              aria-label={label(b, i)}
               aria-pressed={selectedBar === i}
               onClick={() => {
                 if (touchPicked.current || dragged.current) {
@@ -468,10 +542,153 @@ export function BucketChart({
             </button>
           ))}
         </div>
+        {shade && shade.end > fromSec && shade.start < toSec && (
+          <div
+            aria-hidden
+            data-testid="range-shade"
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: `${Math.max(0, xOf(shade.start))}%`,
+              width: `${Math.min(100, xOf(shade.end)) - Math.max(0, xOf(shade.start))}%`,
+              background: "var(--accent-weak)",
+              borderLeft: "2px solid var(--accent-dark)",
+              borderRight: "2px solid var(--accent-dark)",
+              boxSizing: "border-box",
+              pointerEvents: "none",
+            }}
+          />
+        )}
+        {pickRange && (
+          <div
+            data-testid="range-pick"
+            aria-hidden
+            onPointerDown={sweepDown}
+            onPointerMove={sweepMove}
+            onPointerUp={sweepUp}
+            onPointerCancel={sweepCancel}
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 3,
+              cursor: "crosshair",
+              touchAction: "none",
+            }}
+          />
+        )}
+        {visibleClips.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            data-testid="clip-mark"
+            aria-label={`クリップ ${formatTime(c.offsetSec)}${c.title ? ` ${c.title}` : ""}`}
+            aria-pressed={clipId === c.id}
+            onClick={() => {
+              setClipId(c.id);
+              onSeek(c.offsetSec);
+            }}
+            style={{
+              position: "absolute",
+              top: -32,
+              left: `${xOf(c.offsetSec)}%`,
+              width: 44,
+              height: 44,
+              marginLeft: -22,
+              padding: 0,
+              border: 0,
+              background: "transparent",
+              cursor: "pointer",
+              zIndex: 1,
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                display: "block",
+                width: 12,
+                height: 12,
+                margin: "0 auto",
+                transform: "rotate(45deg)",
+                background: "var(--chart-3)",
+                border: `2px solid ${clipId === c.id ? "var(--accent-dark)" : "var(--warn)"}`,
+              }}
+            />
+          </button>
+        ))}
+        {lines.length > 0 && (
+          <>
+            <svg
+              aria-hidden
+              data-testid="keyword-lines"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                pointerEvents: "none",
+                overflow: "visible",
+              }}
+            >
+              {lines.map((l, k) => (
+                <polyline
+                  key={l.term}
+                  data-term={l.term}
+                  fill="none"
+                  stroke={l.color}
+                  strokeWidth={2}
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                  points={lineBars[k]
+                    .map(
+                      (b, i) =>
+                        `${((i + 0.5) / bars.length) * 100},${100 - (b.count / lineTop) * 100}`,
+                    )
+                    .join(" ")}
+                />
+              ))}
+            </svg>
+            <span
+              aria-hidden
+              style={{
+                position: "absolute",
+                top: -18,
+                left: "100%",
+                paddingLeft: 6,
+                fontSize: 11,
+                color: "var(--muted)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              言葉（件）
+            </span>
+            {valueTicks(lineTop).map((v) => (
+              <span
+                key={v}
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  left: "100%",
+                  bottom: `${(v / lineTop) * 100}%`,
+                  paddingLeft: 6,
+                  transform: "translateY(50%)",
+                  fontSize: 11,
+                  color: "var(--muted)",
+                  whiteSpace: "nowrap",
+                  pointerEvents: "none",
+                }}
+              >
+                {v.toLocaleString("ja-JP")}
+              </span>
+            ))}
+          </>
+        )}
         {marks.length > 0 && (
           <div
             data-testid="donation-marks"
-            style={{ position: "absolute", left: 0, right: 0, top: -20, height: 20, zIndex: 1 }}
+            style={{ position: "absolute", left: 0, right: 0, top: -32, height: 44, zIndex: 1 }}
           >
             {marks.map((m) => (
               <button
@@ -487,9 +704,9 @@ export function BucketChart({
                   position: "absolute",
                   left: `${((m.bar + 0.5) / bars.length) * 100}%`,
                   top: 0,
-                  width: 20,
-                  height: 20,
-                  marginLeft: -10,
+                  width: 44,
+                  height: 44,
+                  marginLeft: -22,
                   padding: 0,
                   border: 0,
                   background: "transparent",
@@ -578,9 +795,36 @@ export function BucketChart({
             }}
           >
             {formatTime(bars[hover].startSec)} ・ {bars[hover].count.toLocaleString("ja-JP")} 件
+            {lines.length > 0 && ` ・ ${termText(hover)}`}
           </div>
         )}
       </div>
+      {openClip && (
+        <p
+          aria-live="polite"
+          style={{
+            margin: "0 0 8px",
+            fontSize: 13,
+            color: "var(--muted)",
+            overflowWrap: "anywhere",
+          }}
+        >
+          クリップ：{openClip.title || "（題名なし）"} ・{" "}
+          <a
+            href={openClip.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              minHeight: 44,
+              color: "var(--accent-dark)",
+            }}
+          >
+            クリップのページ
+          </a>
+        </p>
+      )}
       <div
         style={{
           display: "flex",
