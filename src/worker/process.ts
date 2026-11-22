@@ -278,6 +278,9 @@ export async function runJob(db: Db, job: ClaimedJob, fetchChat: ChatFetcher) {
             platform: parsed.platform,
             videoId: parsed.videoId,
             title: fetched.title,
+            // 常連と初見（#64）で同じチャンネルの前の配信と比べるため
+            ...(fetched.channelId ? { channelId: fetched.channelId } : {}),
+            ...(fetched.streamedAt ? { streamedAt: fetched.streamedAt } : {}),
             clips: fetched.clips ?? [],
             totalComments: total,
             lastBucketSec: Number(stats.lastBucketSec),

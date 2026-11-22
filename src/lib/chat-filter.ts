@@ -59,6 +59,22 @@ export function normalizeTerm(s: string): string | null {
   return t === "" ? null : t;
 }
 
+/**
+ * ユーザーの語を "名前" と引用符で囲むと、名前が同じ人だけに合う（#64。囲まなければ名前の一部で合う）。
+ * 囲んだ中身（小文字）を返す。囲んでいなければ null。
+ */
+export function exactName(t: string): string | null {
+  return t.length > 2 && t.startsWith('"') && t.endsWith('"') ? t.slice(1, -1) : null;
+}
+
+/** 名前が同じ人だけに合う語（名前は 100 文字までに収める）。 */
+export function exactUserTerm(author: string): string {
+  return `"${author
+    .trim()
+    .toLowerCase()
+    .slice(0, MAX_TERM - 2)}"`;
+}
+
 /** 絞り込み中か（どれか1つでも語がある）。 */
 export function isFiltering(f: Filter): boolean {
   return FILTER_KEYS.some((k) => f[k].length > 0);
@@ -77,16 +93,20 @@ export function addTerm(
   return { ok: true, list: [...list, t] };
 }
 
-/** コメントが絞り込みに合うか（DB 側も同じ規則で strpos を使う）。 */
+/** コメントが絞り込みに合うか（DB 側も同じ規則で strpos を使う。"名前" は名前が同じ人だけ）。 */
 export function matches(m: { author: string; body: string }, f: Filter): boolean {
   const body = m.body.toLowerCase();
   const author = m.author.toLowerCase();
   const hit = (t: string) => compileRegex(t)?.test(m.body) ?? false;
+  const who = (t: string) => {
+    const name = exactName(t);
+    return name === null ? author.includes(t) : author.trim() === name;
+  };
   if (f.xq.some((t) => body.includes(t))) return false;
-  if (f.xuser.some((t) => author.includes(t))) return false;
+  if (f.xuser.some(who)) return false;
   if (f.xre.some(hit)) return false;
   if (f.q.length > 0 && !f.q.some((t) => body.includes(t))) return false;
-  if (f.user.length > 0 && !f.user.some((t) => author.includes(t))) return false;
+  if (f.user.length > 0 && !f.user.some(who)) return false;
   if (f.re.length > 0 && !f.re.some(hit)) return false;
   return true;
 }

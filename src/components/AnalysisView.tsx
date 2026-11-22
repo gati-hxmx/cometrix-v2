@@ -16,6 +16,7 @@ import { ClipPanel } from "./ClipPanel";
 import { ExportMenu } from "./ExportMenu";
 import { KeywordLines } from "./KeywordLines";
 import { MemoPanel } from "./MemoPanel";
+import { PeoplePanel } from "./PeoplePanel";
 import { PlaybackBar } from "./PlaybackBar";
 import { ReanalyzeButton } from "./ReanalyzeButton";
 import { SavedFilters } from "./SavedFilters";
@@ -216,6 +217,19 @@ export function AnalysisView({ id }: { id: string }) {
   const [filter, setFilter] = useState<Filter>(EMPTY_FILTER);
   // 保存した絞り込みの呼び出し（#67）
   const [preset, setPreset] = useState<{ filter: Filter; n: number } | null>(null);
+  const chatBox = useRef<HTMLElement>(null);
+  // よくコメントした人（#64）の名前を押したとき：チャットをその人だけに絞り、チャットの札を見せる
+  const pickAuthor = useCallback((author: string) => {
+    setPreset((p) => ({ filter: { ...EMPTY_FILTER, user: [author] }, n: (p?.n ?? 0) + 1 }));
+    setTab("chat");
+    const box = chatBox.current;
+    if (box) {
+      const r = box.getBoundingClientRect();
+      // チャットがほとんど見えていないとき（スマホでは下にある）だけ、チャットまで動かす
+      if (r.bottom < 160 || r.top > window.innerHeight - 160)
+        box.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, []);
   const [tab, setTab] = useState<Tab>("chat");
   const [stampSignal, setStampSignal] = useState(0);
   // 今グラフに出している範囲（区間の番号）。画像の保存に使う（#69）。
@@ -692,9 +706,16 @@ export function AnalysisView({ id }: { id: string }) {
                 enabled
               />
             )}
+
+            {done?.result && (
+              <section style={{ ...card, marginTop: 16 }}>
+                <h2 style={{ fontSize: 16, margin: "0 0 8px" }}>よくコメントした人</h2>
+                <PeoplePanel jobId={id} onPick={pickAuthor} />
+              </section>
+            )}
           </div>
           {done?.result && (
-            <aside className="analysis-chat" style={{ ...card, marginTop: 16 }}>
+            <aside ref={chatBox} className="analysis-chat" style={{ ...card, marginTop: 16 }}>
               <div
                 role="tablist"
                 aria-label="チャット・メモ・目次・範囲"

@@ -1,6 +1,6 @@
 import { type SQL, sql } from "drizzle-orm";
 import { chatMessages } from "../db/schema";
-import type { Filter } from "./chat-filter";
+import { exactName, type Filter } from "./chat-filter";
 import { LAUGH_PATTERN, LAUGH_TRIM } from "./laugh";
 import { SPAM_LONG, SPAM_TRIM, SPAM_WINDOW_MS } from "./spam";
 
@@ -9,6 +9,16 @@ export function filterConds(f: Filter): SQL[] {
   const any = (col: typeof chatMessages.body | typeof chatMessages.author, terms: string[]) =>
     sql`(${sql.join(
       terms.map((t) => sql`strpos(lower(${col}), ${t}) > 0`),
+      sql` or `,
+    )})`;
+  const who = (terms: string[]) =>
+    sql`(${sql.join(
+      terms.map((t) => {
+        const name = exactName(t);
+        return name === null
+          ? sql`strpos(lower(${chatMessages.author}), ${t}) > 0`
+          : sql`lower(btrim(${chatMessages.author})) = ${name}`;
+      }),
       sql` or `,
     )})`;
   const re = (terms: string[]) =>
@@ -20,9 +30,9 @@ export function filterConds(f: Filter): SQL[] {
   if (f.re.length) conds.push(re(f.re));
   if (f.xre.length) conds.push(sql`not ${re(f.xre)}`);
   if (f.q.length) conds.push(any(chatMessages.body, f.q));
-  if (f.user.length) conds.push(any(chatMessages.author, f.user));
+  if (f.user.length) conds.push(who(f.user));
   if (f.xq.length) conds.push(sql`not ${any(chatMessages.body, f.xq)}`);
-  if (f.xuser.length) conds.push(sql`not ${any(chatMessages.author, f.xuser)}`);
+  if (f.xuser.length) conds.push(sql`not ${who(f.xuser)}`);
   return conds;
 }
 

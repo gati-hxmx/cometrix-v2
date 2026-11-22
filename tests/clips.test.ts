@@ -119,6 +119,12 @@ describe("Twitch のクリップ取得（#60）", () => {
       { body: video },
       { status: 500, body: {} },
     ]);
-    expect(await fetchTwitchInfo("9", env, f)).toEqual({ title: "T", clips: [] });
+    expect(await fetchTwitchInfo("9", env, f)).toEqual({
+      title: "T",
+      clips: [],
+      // 常連と初見（#64）のためのチャンネルと配信の時刻
+      channelId: "twitch:55",
+      streamedAt: Date.parse("2026-01-01T00:00:00Z") / 1000,
+    });
   });
 });

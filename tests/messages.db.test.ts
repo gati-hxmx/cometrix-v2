@@ -73,6 +73,18 @@ describe.skipIf(!url)("チャットの絞り込み API（Postgres）", () => {
     expect(await body("q=hello&user=jiro")).toEqual([]);
   });
 
+  test('"名前" と囲むと、名前が同じ人だけ（大文字小文字は無視。#64）', async () => {
+    const id = await seed();
+    const authors = async (qs: string) =>
+      ((await (await get(messages, id, qs)).json()) as { author: string }[]).map((r) => r.author);
+    expect(await authors(`user=${encodeURIComponent('"taro"')}`)).toEqual(["Taro"]);
+    expect(await authors(`xuser=${encodeURIComponent('"taro"')}`)).toEqual([
+      "Hanako",
+      "taro_2",
+      "Jiro",
+    ]);
+  });
+
   test("複数の語は OR、除外は優先、除外ユーザーも効く", async () => {
     const id = await seed();
     const authors = async (fn: typeof messages, qs: string) =>

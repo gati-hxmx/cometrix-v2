@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   addTerm,
   EMPTY_FILTER,
+  exactUserTerm,
   type Filter,
   fillBuckets,
   filterParams,
@@ -52,6 +53,20 @@ describe("matches", () => {
   test("% や _ は文字として扱う", () => {
     expect(matches(m, f({ q: ["100%"] }))).toBe(true);
     expect(matches(m, f({ q: ["_"] }))).toBe(false);
+  });
+  test('"名前" と囲むと名前が同じ人だけ（#64）', () => {
+    expect(matches(m, f({ user: ['"taro_yamada"'] }))).toBe(true);
+    expect(matches(m, f({ user: ['"taro"'] }))).toBe(false);
+    expect(matches({ ...m, author: "Taro_Yamada2" }, f({ user: ['"taro_yamada"'] }))).toBe(false);
+    expect(matches(m, f({ xuser: ['"taro_yamada"'] }))).toBe(false);
+    expect(matches(m, f({ xuser: ['"taro"'] }))).toBe(true);
+    // 引用符だけ・片方だけは、ふつうの部分一致
+    expect(matches({ ...m, author: 'a"b' }, f({ user: ['"'] }))).toBe(true);
+    expect(matches(m, f({ user: ['""'] }))).toBe(false);
+  });
+  test("名前の一覧から押した語は、小文字の引用符つきで 100 文字に収まる", () => {
+    expect(exactUserTerm(" Taro ")).toBe('"taro"');
+    expect(exactUserTerm("a".repeat(200))).toHaveLength(100);
   });
   test("指定なしは全部一致", () => expect(matches(m, EMPTY_FILTER)).toBe(true));
 });

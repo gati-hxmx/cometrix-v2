@@ -198,7 +198,14 @@ async function fetchClips(
   return [...seen.values()].sort((a, b) => a.offsetSec - b.offsetSec);
 }
 
-export type TwitchInfo = { title: string | null; clips: Clip[] };
+export type TwitchInfo = {
+  title: string | null;
+  clips: Clip[];
+  /** 配信したチャンネル（#64）。user_id が取れたときだけ */
+  channelId?: string;
+  /** 配信した時刻（UNIX 秒） */
+  streamedAt?: number;
+};
 
 /** Helix API でタイトルを取る。設定がない・失敗したときは null。 */
 export async function fetchTwitchTitle(
@@ -245,7 +252,15 @@ export async function fetchTwitchInfo(
     const video = ((await v.json()) as { data?: HelixVideo[] }).data?.[0];
     // クリップが取れなくてもタイトルは返す。
     const clips = await fetchClips(videoId, video, headers, f).catch(() => []);
-    return { title: video?.title || null, clips };
+    const at = video?.created_at ? Date.parse(video.created_at) : Number.NaN;
+    return {
+      title: video?.title || null,
+      clips,
+      ...(video?.user_id && /^\d+$/.test(video.user_id)
+        ? { channelId: `twitch:${video.user_id}` }
+        : {}),
+      ...(Number.isFinite(at) ? { streamedAt: Math.floor(at / 1000) } : {}),
+    };
   } catch {
     return none;
   }
@@ -296,6 +311,8 @@ export const fetchWithTwitch: ChatFetcher = async (
   ]);
   return {
     title: info.title ?? `Twitch VOD ${videoId}`,
+    channelId: info.channelId,
+    streamedAt: info.streamedAt,
     messages,
     clips: info.clips,
     saved: resume !== undefined,
