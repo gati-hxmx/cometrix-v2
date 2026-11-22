@@ -223,3 +223,13 @@ body {
     width: auto;
   }
 }
+
+/* キー操作の案内（#66）。キーボードとマウスのある PC だけに出す。 */
+.key-hint {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) and (min-width: 1024px) {
+  .key-hint {
+    display: inline;
+  }
+}

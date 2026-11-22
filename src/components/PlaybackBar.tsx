@@ -27,6 +27,7 @@ export function PlaybackBar({
   onSeek,
   lead,
   onLead,
+  onStep,
   enabled,
 }: {
   total: number;
@@ -36,11 +37,16 @@ export function PlaybackBar({
   /** 棒を押したとき、何秒前から再生するか。 */
   lead: Lead;
   onLead: (v: Lead) => void;
+  /** 「N 秒」が正しい数に変わったとき（キーの J / L も同じ秒数で動く、#66） */
+  onStep?: (sec: number) => void;
   enabled: boolean;
 }) {
   const [now, setNow] = useState(0);
   const [text, setText] = useState(String(STEP_DEFAULT));
   const step = parseStepSec(text);
+  useEffect(() => {
+    if (step !== null) onStep?.(step);
+  }, [step, onStep]);
 
   useEffect(() => {
     if (!enabled) {

@@ -20,11 +20,14 @@ export function MemoPanel({
   getTime,
   onSeek,
   onError,
+  stampSignal = 0,
 }: {
   jobId: string;
   getTime: () => number;
   onSeek: (sec: number) => void;
   onError: (message: string) => void;
+  /** 増えるたびに今の時刻を差し込む（キー操作の M、#66） */
+  stampSignal?: number;
 }) {
   const [memo, setMemo] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -57,17 +60,25 @@ export function MemoPanel({
     return () => clearTimeout(t);
   }, [memo, loaded, jobId, onError]);
 
-  const stamp = () => {
+  /** focus: 差し込んだあとメモの欄に入るか。キーの M（#66）からは入らない（続けて ← → などを使えるように）。 */
+  const stamp = (focus = true) => {
     const el = area.current;
     const focused = el !== null && document.activeElement === el;
     const sel = focused && el ? { start: el.selectionStart, end: el.selectionEnd } : null;
     const r = insertAt(memo, formatStamp(getTime()), sel);
     setMemo(r.text);
+    if (!focus) return;
     requestAnimationFrame(() => {
       el?.focus();
       el?.setSelectionRange(r.caret, r.caret);
     });
   };
+
+  const stampRef = useRef(stamp);
+  stampRef.current = stamp;
+  useEffect(() => {
+    if (stampSignal > 0 && loaded) stampRef.current(false);
+  }, [stampSignal, loaded]);
 
   const parts = splitMemo(memo);
   const left = MEMO_MAX - memo.length;
@@ -78,7 +89,7 @@ export function MemoPanel({
       className="memo-panel"
     >
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <button type="button" style={btn} onClick={stamp}>
+        <button type="button" style={btn} onClick={() => stamp()} aria-keyshortcuts="M">
           今の再生位置を差し込む
         </button>
         <span style={{ color: "var(--muted)", fontSize: 13 }}>
