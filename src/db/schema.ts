@@ -34,6 +34,10 @@ export const jobs = pgTable(
     error: jsonb("error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    // 最後に分析が開かれた日時（掃除の目安）。null のときは created_at を開いた日時とみなす。
+    lastOpenedAt: timestamp("last_opened_at", { withTimezone: true }),
+    // 古くなってコメント本文を消した日時。集計（chat_buckets）は残る。
+    messagesPurgedAt: timestamp("messages_purged_at", { withTimezone: true }),
   },
   (t) => [
     index("jobs_status_created_idx").on(t.status, t.createdAt),

@@ -30,6 +30,7 @@ type Job = {
   progress?: FetchProgress | null;
   /** done／failed のとき、あと何秒で分析し直せるか（#99）。 */
   retryAfterSec?: number | null;
+  messagesPurged?: boolean;
 };
 type State =
   | { kind: "loading" }
@@ -157,18 +158,20 @@ export function AnalysisView({ id }: { id: string }) {
   const playerBox = useRef<HTMLDivElement>(null);
   const closeToast = useCallback(() => setToast(null), []);
   const [filter, setFilter] = useState<Filter>(EMPTY_FILTER);
+  // 古い分析の掃除（#50）でコメント本文を消した分析。保存済みの集計だけでグラフを描く。
+  const purged = state.kind === "job" && state.job.messagesPurged === true;
   const [tab, setTab] = useState<Tab>("chat");
   const [pickMode, setPickMode] = useState(false);
   const [picked, setPicked] = useState<{ start: number; end: number; n: number } | null>(null);
   const [mark, setMark] = useState<{ start: number; end: number } | null>(null);
   const [filtered, setFiltered] = useState<Bucket[] | null>(null);
   const [series, setSeries] = useState<"all" | "laugh">("all");
-  const laugh = series === "laugh";
+  const laugh = series === "laugh" && !purged;
   const [terms, setTerms] = useState<string[]>([]);
   // 言葉ごとの数（読み込めたものだけ）。言葉を外しても、同じ言葉を足し直したときに使い回す。
   const [termData, setTermData] = useState<Record<string, Bucket[]>>({});
   const [spamMode, setSpamMode] = useState<"on" | "off">("on");
-  const spam = spamMode === "on";
+  const spam = spamMode === "on" && !purged;
   const onFilter = useCallback((f: Filter) => setFilter(f), []);
   const getTime = useCallback(() => player.current?.getTime() ?? 0, []);
   const filtering = isFiltering(filter);
@@ -448,7 +451,7 @@ export function AnalysisView({ id }: { id: string }) {
                 <h2 style={{ fontSize: 16, margin: 0 }}>
                   {laugh && filtered !== null ? "笑いの数（30秒ごと）" : "コメント数（30秒ごと）"}
                 </h2>
-                {done?.result && (
+                {done?.result && !purged && (
                   <div
                     style={{
                       marginLeft: "auto",
@@ -506,7 +509,7 @@ export function AnalysisView({ id }: { id: string }) {
                   style={{ height: 162, background: "var(--surface-2)", borderRadius: 6 }}
                 />
               )}
-              {done?.result && (
+              {done?.result && !purged && (
                 <KeywordLines items={keywordItems} total={total} onChange={setTerms} />
               )}
             </section>
@@ -572,13 +575,19 @@ export function AnalysisView({ id }: { id: string }) {
                 className="chat-list-wrap"
                 hidden={tab !== "chat"}
               >
-                <ChatList
-                  jobId={id}
-                  getTime={getTime}
-                  onSeek={seek}
-                  onFilter={onFilter}
-                  onError={setToast}
-                />
+                {purged ? (
+                  <p role="status" style={{ margin: 0, padding: 16, color: "var(--muted)" }}>
+                    古いため、コメントの本文は整理しました。コメント数のグラフは見られます。本文も見るときは「もう一度分析する」で取り直せます。
+                  </p>
+                ) : (
+                  <ChatList
+                    jobId={id}
+                    getTime={getTime}
+                    onSeek={seek}
+                    onFilter={onFilter}
+                    onError={setToast}
+                  />
+                )}
               </div>
               <div
                 role="tabpanel"

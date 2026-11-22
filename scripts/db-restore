@@ -1,0 +1,24 @@
+#!/bin/bash
+# バックアップ（scripts/db-backup のダンプ）から DB を戻す。今の中身は上書きされる。
+# 使い方: scripts/db-restore [--yes] <ダンプのファイル>
+# 確認を省くのは --yes のときだけ。戻す前に、web と worker を止めておくこと（docs/backup.md）。
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+yes=0
+if [ "${1:-}" = "--yes" ]; then yes=1; shift; fi
+file="${1:-}"
+[ -n "$file" ] || { echo "使い方: scripts/db-restore [--yes] <ダンプのファイル>" >&2; exit 2; }
+[ -s "$file" ] || { echo "db-restore: $file が見つからないか空です" >&2; exit 1; }
+
+if [ "$yes" -ne 1 ]; then
+  printf '今の DB の中身を %s で上書きします。続けますか？ [y/N] ' "$file"
+  read -r answer
+  [ "$answer" = "y" ] || { echo "中止しました"; exit 1; }
+fi
+
+# --clean --if-exists: 既存の表を消してから作り直す。--single-transaction: 途中で失敗したら元のまま。
+docker compose exec -T db pg_restore -U cometrix -d cometrix \
+  --clean --if-exists --no-owner --single-transaction <"$file"
+echo "戻しました: $file"

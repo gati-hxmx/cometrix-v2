@@ -105,6 +105,9 @@ export async function reanalyze(db: Db, id: string): Promise<ReanalyzeResult> {
         attempts: 0,
         result: null,
         error: null,
+        // 取り直すので、古い分析の掃除（#50）の印も消す。
+        messagesPurgedAt: null,
+        lastOpenedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       })
