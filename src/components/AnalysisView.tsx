@@ -8,6 +8,7 @@ import { cleanClips } from "../lib/clips";
 import { type FetchProgress, progressLabel, progressPercent } from "../lib/progress";
 import { BucketChart } from "./BucketChart";
 import { ChatList, type Filter } from "./ChatList";
+import { KeywordLines } from "./KeywordLines";
 import { MemoPanel } from "./MemoPanel";
 import { PlaybackBar } from "./PlaybackBar";
 import { ReanalyzeButton } from "./ReanalyzeButton";
@@ -157,6 +158,9 @@ export function AnalysisView({ id }: { id: string }) {
   const [filtered, setFiltered] = useState<Bucket[] | null>(null);
   const [series, setSeries] = useState<"all" | "laugh">("all");
   const laugh = series === "laugh";
+  const [terms, setTerms] = useState<string[]>([]);
+  // 言葉ごとの数（読み込めたものだけ）。言葉を外しても、同じ言葉を足し直したときに使い回す。
+  const [termData, setTermData] = useState<Record<string, Bucket[]>>({});
   const [spamMode, setSpamMode] = useState<"on" | "off">("on");
   const spam = spamMode === "on";
   const onFilter = useCallback((f: Filter) => setFilter(f), []);
@@ -198,6 +202,27 @@ export function AnalysisView({ id }: { id: string }) {
       stale = true;
     };
   }, [filter, recount, laugh, spam, isDone, id, filtering]);
+
+  // 重ねる言葉ごとに、その言葉を含むコメントの数を読む（#53）。読み込み中の言葉は二重に読まない。
+  const loading = useRef(new Set<string>());
+  useEffect(() => {
+    if (!isDone) return;
+    for (const t of terms) {
+      if (termData[t] || loading.current.has(t)) continue;
+      loading.current.add(t);
+      fetch(`/api/jobs/${id}/buckets?${new URLSearchParams({ term: t })}`, { cache: "no-store" })
+        .then((r) => {
+          if (!r.ok) throw new Error(String(r.status));
+          return r.json() as Promise<Bucket[]>;
+        })
+        .then((b) => setTermData((d) => ({ ...d, [t]: b })))
+        .catch(() => {
+          setToast(`「${t}」の数を読み込めませんでした。`);
+          setTerms((l) => l.filter((x) => x !== t));
+        })
+        .finally(() => loading.current.delete(t));
+    }
+  }, [terms, termData, isDone, id]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reload は分析し直し後にポーリングを始め直すための合図
   useEffect(() => {
@@ -295,6 +320,17 @@ export function AnalysisView({ id }: { id: string }) {
 
   const matched = filtered ? filtered.reduce((sum, b) => sum + b.count, 0) : null;
   const total = done?.result?.totalComments ?? 0;
+  const lineColors = laugh
+    ? ["var(--chart-3)", "var(--chart-4)"]
+    : ["var(--chart-2)", "var(--chart-3)"];
+  const keywordItems = terms.map((term, i) => ({
+    term,
+    color: lineColors[i],
+    count: termData[term] ? termData[term].reduce((sum, b) => sum + b.count, 0) : null,
+  }));
+  const lines = keywordItems.flatMap((k) =>
+    termData[k.term] ? [{ term: k.term, color: k.color, buckets: termData[k.term] }] : [],
+  );
 
   return (
     <main className="analysis" style={{ maxWidth: 1240, margin: "0 auto", padding: "16px" }}>
@@ -431,12 +467,16 @@ export function AnalysisView({ id }: { id: string }) {
                   filtered={filtering && filtered !== null}
                   laugh={laugh && filtered !== null}
                   clips={cleanClips(done?.result?.clips)}
+                  lines={lines}
                 />
               ) : (
                 <div
                   aria-hidden
                   style={{ height: 162, background: "var(--surface-2)", borderRadius: 6 }}
                 />
+              )}
+              {done?.result && (
+                <KeywordLines items={keywordItems} total={total} onChange={setTerms} />
               )}
             </section>
 

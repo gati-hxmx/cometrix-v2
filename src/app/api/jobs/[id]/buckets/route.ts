@@ -9,7 +9,9 @@ import {
   isBadPatternError,
   laughCond,
   spamFreeSource,
+  termCond,
 } from "../../../../../lib/chat-sql";
+import { normalizeKeyword } from "../../../../../lib/term";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +22,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * q・user があるときは、一致したコメントだけを同じ区間で数える。
  * laugh=1 のときは、笑いのコメント（lib/laugh.ts）だけを数える。絞り込みと同時に使える。
  * spam=1 のときは、スパム（lib/spam.ts：連投・長いコピペ）を除いて数える。判定は絞り込みの前の全コメントで行う。
+ * term=言葉 のときは、その言葉を含むコメントだけを数える（#53）。ほかの絞り込み・laugh とは同時に使えない。
  */
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
@@ -30,6 +33,16 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   if (laughParam !== null && laughParam !== "1" && laughParam !== "0")
     return Response.json({ error: { code: "bad_request" } }, { status: 400 });
   const laugh = laughParam === "1";
+  const terms = params.getAll("term");
+  let term: string | null = null;
+  if (terms.length > 0) {
+    term = terms.length === 1 ? normalizeKeyword(terms[0]) : null;
+    const others = ["q", "xq", "user", "xuser", "re", "xre", "laugh", "spam"].some((k) =>
+      params.has(k),
+    );
+    if (term === null || others)
+      return Response.json({ error: { code: "bad_request" } }, { status: 400 });
+  }
   const spamParam = params.get("spam");
   if (spamParam !== null && spamParam !== "1" && spamParam !== "0")
     return Response.json({ error: { code: "bad_request" } }, { status: 400 });
@@ -41,7 +54,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   if (job.status !== "done")
     return Response.json({ error: { code: "not_ready" } }, { status: 409 });
 
-  if (!isFiltering(f.filter) && !laugh && !spam) {
+  if (!isFiltering(f.filter) && !laugh && !spam && term === null) {
     const rows = await db
       .select({ startSec: chatBuckets.startSec, count: chatBuckets.count })
       .from(chatBuckets)
@@ -52,6 +65,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 
   const conds: SQL[] = [...filterConds(f.filter)];
   if (laugh) conds.push(laughCond());
+  if (term !== null) conds.push(termCond(term));
   if (!spam) conds.push(sql`${chatMessages.jobId} = ${id}`, sql`${chatMessages.offsetMs} >= 0`);
   const start = sql`(floor(${chatMessages.offsetMs} / 30000) * 30)::int`;
   const from = spam ? spamFreeSource(id) : sql`${chatMessages}`;
