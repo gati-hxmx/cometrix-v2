@@ -7,6 +7,7 @@ import { BucketChart } from "./BucketChart";
 import { ChatList, type Filter } from "./ChatList";
 import { MemoPanel } from "./MemoPanel";
 import { PlaybackBar } from "./PlaybackBar";
+import { Segmented } from "./Segmented";
 import { Toast } from "./Toast";
 import { TwitchPlayer } from "./TwitchPlayer";
 import { UrlForm } from "./UrlForm";
@@ -25,6 +26,10 @@ type State =
   | { kind: "job"; job: Job; buckets: Bucket[] | null };
 
 const POLL_MS = 3000;
+const SERIES = [
+  { key: "all", name: "すべて" },
+  { key: "laugh", name: "笑い" },
+] as const;
 const card = {
   background: "var(--surface)",
   border: "1px solid var(--line)",
@@ -68,14 +73,17 @@ export function AnalysisView({ id }: { id: string }) {
   const [filter, setFilter] = useState<Filter>(EMPTY_FILTER);
   const [tab, setTab] = useState<"chat" | "memo">("chat");
   const [filtered, setFiltered] = useState<Bucket[] | null>(null);
+  const [series, setSeries] = useState<"all" | "laugh">("all");
+  const laugh = series === "laugh";
   const onFilter = useCallback((f: Filter) => setFilter(f), []);
   const getTime = useCallback(() => player.current?.getTime() ?? 0, []);
   const filtering = isFiltering(filter);
   const isDone = state.kind === "job" && state.job.status === "done";
 
-  // 絞り込み中は、一致したコメントの数でグラフを描き直す。
+  // 絞り込み中・笑いを選んだときは、一致したコメントの数でグラフを描き直す。
+  const recount = filtering || laugh;
   useEffect(() => {
-    if (!filtering || !isDone) {
+    if (!recount || !isDone) {
       setFiltered(null);
       return;
     }
@@ -83,17 +91,26 @@ export function AnalysisView({ id }: { id: string }) {
     // 前の絞り込みの結果を、新しい条件の結果として見せない。
     setFiltered(null);
     const p = filterParams(filter);
+    if (laugh) p.set("laugh", "1");
     fetch(`/api/jobs/${id}/buckets?${p}`, { cache: "no-store" })
       .then((r) => {
         if (!r.ok) throw new Error(String(r.status));
         return r.json() as Promise<Bucket[]>;
       })
       .then((b) => !stale && setFiltered(b))
-      .catch(() => !stale && setToast("絞り込んだグラフを読み込めませんでした。"));
+      .catch(
+        () =>
+          !stale &&
+          setToast(
+            laugh
+              ? "笑いのグラフを読み込めませんでした。"
+              : "絞り込んだグラフを読み込めませんでした。",
+          ),
+      );
     return () => {
       stale = true;
     };
-  }, [filter, filtering, isDone, id]);
+  }, [filter, recount, laugh, isDone, id]);
 
   useEffect(() => {
     let stopped = false;
@@ -227,23 +244,46 @@ export function AnalysisView({ id }: { id: string }) {
             </div>
 
             <section style={{ ...card, marginTop: 16 }}>
-              <h2 style={{ fontSize: 16, margin: "0 0 8px" }}>コメント数（30秒ごと）</h2>
-              {filtering && matched !== null && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  marginBottom: 8,
+                }}
+              >
+                <h2 style={{ fontSize: 16, margin: 0 }}>
+                  {laugh ? "笑いの数（30秒ごと）" : "コメント数（30秒ごと）"}
+                </h2>
+                {done?.result && (
+                  <Segmented
+                    label="グラフに出すコメント"
+                    options={SERIES}
+                    value={series}
+                    onChange={setSeries}
+                  />
+                )}
+              </div>
+              {recount && matched !== null && (
                 <p
                   aria-live="polite"
                   style={{ margin: "0 0 8px", color: "var(--muted)", fontSize: 13 }}
                 >
-                  絞り込み中：一致 {matched.toLocaleString("ja-JP")} / 全{" "}
+                  {filtering ? "絞り込み中：" : ""}
+                  {laugh ? "笑い" : "一致"} {matched.toLocaleString("ja-JP")} / 全{" "}
                   {total.toLocaleString("ja-JP")} 件
                 </p>
               )}
               {state.kind === "job" && state.buckets ? (
                 <BucketChart
                   key={id}
-                  buckets={filtering && filtered ? filtered : state.buckets}
+                  buckets={recount && filtered ? filtered : state.buckets}
                   onSeek={seek}
                   getTime={getTime}
                   filtered={filtering && filtered !== null}
+                  laugh={laugh && filtered !== null}
                 />
               ) : (
                 <div
