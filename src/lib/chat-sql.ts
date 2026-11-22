@@ -31,6 +31,11 @@ export function laughCond(): SQL {
   return sql`btrim(${chatMessages.body}, ${LAUGH_TRIM}) ~* ${LAUGH_PATTERN}`;
 }
 
+/** 言葉を含むコメントだけにする条件（hasTerm と同じ規則。term は normalizeKeyword 済み）。 */
+export function termCond(term: string): SQL {
+  return sql`strpos(lower(normalize(${chatMessages.body}, NFKC)), ${term}) > 0`;
+}
+
 /**
  * スパムを除いたコメントの表（spam.ts の dropSpam と同じ規則）。表の名前を chat_messages にそろえるので、
  * filterConds・laughCond をそのまま使える。動画開始前は含まない。
