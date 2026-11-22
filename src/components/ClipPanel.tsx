@@ -14,7 +14,7 @@ import {
   removeClip,
   serializeClips,
   updateClip,
-} from "../lib/clips";
+} from "../lib/clip-ranges";
 
 const SAVE_MS = 500;
 const EDIT_MS = 600;

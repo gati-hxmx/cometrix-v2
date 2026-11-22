@@ -12,7 +12,7 @@ import {
   removeClip,
   serializeClips,
   updateClip,
-} from "../src/lib/clips";
+} from "../src/lib/clip-ranges";
 
 const c = (id: string, start: number, end: number, name = "") => ({ id, name, start, end });
 
