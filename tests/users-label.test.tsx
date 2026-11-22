@@ -29,4 +29,18 @@ describe("人数のグラフの単位", () => {
     const html = renderToStaticMarkup(<BucketChart buckets={many} onSeek={() => {}} users />);
     expect(html).toContain("30秒あたり最多 6 人");
   });
+
+  it("まとめているとき、重ねた言葉の数には区間の長さを添える（人数は30秒あたり、言葉は区間の合計）", () => {
+    const many = Array.from({ length: 400 }, (_, i) => ({ startSec: i * 30, count: i % 7 }));
+    const html = renderToStaticMarkup(
+      <BucketChart
+        buckets={many}
+        onSeek={() => {}}
+        users
+        lines={[{ term: "草", color: "var(--chart-2)", buckets: many }]}
+      />,
+    );
+    // 400区間を棒120本以内に → 4区間（2分）ずつ
+    expect(html).toContain("「草」2分で");
+  });
 });

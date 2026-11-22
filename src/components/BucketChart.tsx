@@ -1,5 +1,6 @@
 "use client";
 import { type KeyboardEvent, type PointerEvent, useEffect, useRef, useState } from "react";
+import { BUCKET_SECONDS } from "../lib/buckets";
 import { type Bucket, formatTime, groupBuckets, indexAtX, peakIndex } from "../lib/chart";
 import {
   clampRange,
@@ -353,9 +354,15 @@ export function BucketChart({
         : filtered
           ? `一致 ${n} 件`
           : `${n} コメント`;
+  // 人数の棒は30秒あたりの最多、言葉の線はまとめた区間の合計なので、まとめているときは区間の長さを添える。
+  const spanSec = group * BUCKET_SECONDS;
+  const span = spanSec >= 60 ? `${Math.round((spanSec / 60) * 10) / 10}分で` : `${spanSec}秒で`;
   const termText = (i: number) =>
     lines
-      .map((l, k) => `「${l.term}」${(lineBars[k][i]?.count ?? 0).toLocaleString("ja-JP")} 件`)
+      .map(
+        (l, k) =>
+          `「${l.term}」${users && group > 1 ? span : ""}${(lineBars[k][i]?.count ?? 0).toLocaleString("ja-JP")} 件`,
+      )
       .join("・");
   const detail = (b: Bucket, i: number) =>
     lines.length > 0 ? `${countText(b.count)}・${termText(i)}` : countText(b.count);
@@ -719,7 +726,10 @@ export function BucketChart({
               zIndex: 2,
             }}
           >
-            {formatTime(bars[hover].startSec)} ・ {bars[hover].count.toLocaleString("ja-JP")} {unit}
+            {formatTime(bars[hover].startSec)} ・{" "}
+            {users
+              ? countText(bars[hover].count)
+              : `${bars[hover].count.toLocaleString("ja-JP")} ${unit}`}
             {lines.length > 0 && ` ・ ${termText(hover)}`}
           </div>
         )}
