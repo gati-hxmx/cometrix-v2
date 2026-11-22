@@ -38,6 +38,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
       }}
     >
       <svg
+        aria-hidden
         width={art}
         height={art}
         viewBox="0 0 24 24"
