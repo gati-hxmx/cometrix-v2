@@ -86,7 +86,7 @@ flowchart LR
 
 | 止まり方 | 見張りがすること |
 | --- | --- |
-| Claude の PR で、Codex のレビューが30分以上始まらない（Codex は bot の `@codex review` に反応しない） | 人のトークン（Secret `CODEX_REQUEST_TOKEN`）で `@codex review` を頼み直す。2回で始まらなければ、Claude が代わりにレビューして進める |
+| Claude の PR で、Codex のレビューが30分以上始まらない（Codex は bot の `@codex review` に反応しない） | 人のトークン（Secret `CODEX_REQUEST_TOKEN`）で `@codex review` を頼み直す。2回で始まらなければ、Claude が代わりにレビューして進める。Codex が「利用上限（usage limit）」と返事をしているときは、頼み直さずにすぐ Claude が代わりにレビューする |
 | レビューは終わったのに、30分以上次へ進まない（指摘なしで 👍 だけのときなど） | Claude に address か merge-gate で進めてもらう（2回まで） |
 | Agent の実行がエラーや時間切れで終わった | 30分おいて1回だけ再実行する。それでも失敗したら Discord に知らせる |
 | 上のどれでも進まない | Discord に1回だけ知らせる |
@@ -94,4 +94,4 @@ flowchart LR
 - `needs-human`・`blocked` のラベルが付いた PR、下書きの PR、自動マージ待ちの PR は触りません。
 - 再開するたびに、PR に「自動の見張り」のコメント（`<!-- watchdog:… -->`）を残します。回数の上限はこのコメントで数えます。
 - 判断だけを確かめたいときは、Actions の Watchdog を手動で実行します（既定は dry-run）。
-- 止めるときは、Actions で Watchdog を「Disable workflow」にします。動いている実行も15分以内に自分で終わります。再開は「Enable workflow」のあと、手動で dry_run を外して1回実行します。
+- 止めるときは、Actions で Watchdog を「Disable workflow」にします。動いている実行も15分以内に自分で終わります。再開は「Enable workflow」のあと、手動で dry_run を外して1回実行します。**止めたままにすると、Codex が使えない間の Claude の代行レビューも動かず、PR がたまります**（2026-11-22、14日から止まっていて13本たまった）。

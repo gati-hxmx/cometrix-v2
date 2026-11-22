@@ -37,6 +37,30 @@ class DecideTest(unittest.TestCase):
         self.assertIsNone(w.decide(s, T0 + timedelta(minutes=20), has_token=True))
         self.assertEqual(w.decide(s, T0 + timedelta(minutes=31), has_token=True), "request-codex")
 
+    def test_codex_usage_limit_goes_straight_to_claude(self):
+        # 2026-11-22 の実例：Codex が利用上限で、頼み直しても動かず PR が13本たまった
+        s = state(comments=[{"created_at": at(1), "user": user(f"{CODEX}[bot]"),
+                             "body": "You have reached your Codex usage limits. ..."}])
+        self.assertTrue(s.codex_limited)
+        self.assertEqual(w.decide(s, T0 + timedelta(minutes=31), has_token=True), "claude-review")
+
+    def test_usage_limit_for_older_commit_is_ignored(self):
+        s = state(comments=[{"created_at": at(-5), "user": user(f"{CODEX}[bot]"),
+                             "body": "You have reached your Codex usage limits."}])
+        self.assertFalse(s.codex_limited)
+        self.assertEqual(w.decide(s, T0 + timedelta(minutes=31), has_token=True), "request-codex")
+
+    def test_usage_limit_from_others_is_ignored(self):
+        s = state(comments=[{"created_at": at(1), "user": user("someone"),
+                             "body": "You have reached your Codex usage limits."}])
+        self.assertFalse(s.codex_limited)
+
+    def test_usage_limit_then_notify_after_claude_review(self):
+        s = state(comments=[{"created_at": at(1), "user": user(f"{CODEX}[bot]"),
+                             "body": "You have reached your Codex usage limits."}])
+        s.nudges["claude-review"] = 1
+        self.assertEqual(w.decide(s, T0 + timedelta(minutes=31), has_token=True), "notify")
+
     def test_without_token_claude_reviews_instead(self):
         s = state()
         self.assertEqual(w.decide(s, T0 + timedelta(hours=1), has_token=False), "claude-review")
