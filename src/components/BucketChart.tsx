@@ -57,9 +57,12 @@ export function BucketChart({
   mark = null,
   clips = [],
   lines = [],
+  keyHint = false,
 }: {
   buckets: Bucket[];
   onSeek: (sec: number) => void;
+  /** キー操作の案内を出す（初めてのときだけ、#66） */
+  keyHint?: boolean;
   /** プレイヤーの再生位置（秒）。あれば約1秒ごとに読んで縦線で示す。 */
   getTime?: () => number;
   /** 絞り込み中。空の文言と棒の説明を「一致」にする。 */
@@ -481,6 +484,7 @@ export function BucketChart({
         {/* biome-ignore lint/a11y/noStaticElementInteractions: 中の棒（button）で起きた操作をまとめて受ける入れ物。それ自体は操作の対象ではない */}
         <div
           ref={plot}
+          data-chart-plot
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -772,6 +776,12 @@ export function BucketChart({
         }}
       >
         <span>Ctrl＋ホイール・2本指で拡大、拡大中はドラッグで移動</span>
+        {/* キー操作（#66）はキーボードのある PC だけに、一度使うまで案内する（部品 4-8） */}
+        {keyHint && (
+          <span className="key-hint">
+            ← → 前後の山・スペース 再生／停止・J L 10秒・M メモに時刻
+          </span>
+        )}
         {zoomed && (
           <button
             type="button"

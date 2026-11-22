@@ -8,6 +8,8 @@ import type { PlayerHandle } from "./YoutubePlayer";
 type TwitchPlayerApi = {
   seek(sec: number): void;
   play(): void;
+  pause(): void;
+  isPaused(): boolean;
   getCurrentTime(): number;
   addEventListener(event: string, cb: () => void): void;
   destroy?: () => void;
@@ -63,6 +65,16 @@ export function TwitchPlayer({ videoId, ref }: { videoId: string; ref?: Ref<Play
   const [problem, setProblem] = useState<"failed" | "blocked" | null>(null);
 
   useImperativeHandle(ref, () => ({
+    togglePlay() {
+      const p = player.current;
+      if (!p) return;
+      try {
+        if (p.isPaused()) p.play();
+        else p.pause();
+      } catch {
+        // 準備ができていないときは何もしない
+      }
+    },
     getTime() {
       try {
         return player.current?.getCurrentTime() ?? pending.current ?? lastSecRef.current;

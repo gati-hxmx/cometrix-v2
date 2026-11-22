@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Bucket } from "../lib/chart";
 import { EMPTY_FILTER, filterParams, isFiltering } from "../lib/chat-filter";
 import { cleanClips } from "../lib/clips";
+import { keyAction, SKIP_SEC, stepPeak } from "../lib/keys";
 import { LEAD_DEFAULT, LEAD_KEY, type Lead, leadTarget, parseLead } from "../lib/lead";
 import { type FetchProgress, progressLabel, progressPercent } from "../lib/progress";
 import { pickPeaks } from "../lib/toc";
@@ -22,6 +23,8 @@ import { TocPanel } from "./TocPanel";
 import { TwitchPlayer } from "./TwitchPlayer";
 import { UrlForm } from "./UrlForm";
 import { type PlayerHandle, YoutubePlayer } from "./YoutubePlayer";
+
+const KEYS_SEEN_KEY = "cometrix-keys-seen";
 
 type Job = {
   status: "queued" | "running" | "done" | "failed";
@@ -170,6 +173,16 @@ export function AnalysisView({ id }: { id: string }) {
   const closeToast = useCallback(() => setToast(null), []);
   const [filter, setFilter] = useState<Filter>(EMPTY_FILTER);
   const [tab, setTab] = useState<Tab>("chat");
+  const [stampSignal, setStampSignal] = useState(0);
+  // キー操作の案内は、一度キーを使うまで出す（部品 4-8）。読めないブラウザでは出したまま。
+  const [keysSeen, setKeysSeen] = useState(true);
+  useEffect(() => {
+    try {
+      setKeysSeen(localStorage.getItem(KEYS_SEEN_KEY) === "1");
+    } catch {
+      setKeysSeen(false);
+    }
+  }, []);
   const [pickMode, setPickMode] = useState(false);
   const [picked, setPicked] = useState<{ start: number; end: number; n: number } | null>(null);
   const [mark, setMark] = useState<{ start: number; end: number } | null>(null);
@@ -340,6 +353,46 @@ export function AnalysisView({ id }: { id: string }) {
   }, []);
 
   const seekPeak = useCallback((sec: number) => seek(leadTarget(sec, lead)), [seek, lead]);
+
+  // キー操作（#66）。前後の山は、今グラフに出している数の目次の山を、少し前から再生する設定（lead）込みでたどる。
+  const shown = recount ? filtered : state.kind === "job" ? state.buckets : null;
+  const keyState = useRef({ shown, lead, isDone, seek });
+  keyState.current = { shown, lead, isDone, seek };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const k = keyState.current;
+      if (!k.isDone || e.defaultPrevented) return;
+      const el = e.target instanceof HTMLElement ? e.target : null;
+      const action = keyAction(e, {
+        tagName: el?.tagName,
+        isContentEditable: el?.isContentEditable,
+        role: el?.getAttribute("role"),
+        inChart: el?.closest("[data-chart-plot]") != null,
+      });
+      if (!action) return;
+      const p = player.current;
+      if (!p) return;
+      e.preventDefault();
+      setKeysSeen(true);
+      try {
+        localStorage.setItem(KEYS_SEEN_KEY, "1");
+      } catch {}
+      const now = p.getTime();
+      if (action === "toggle") p.togglePlay();
+      else if (action === "back") k.seek(Math.max(0, now - SKIP_SEC));
+      else if (action === "forward") k.seek(now + SKIP_SEC);
+      else if (action === "stamp") {
+        setTab("memo");
+        setStampSignal((n) => n + 1);
+      } else {
+        const targets = pickPeaks(k.shown ?? []).map((t) => leadTarget(t.startSec, k.lead));
+        const to = stepPeak(targets, now, action === "next" ? 1 : -1);
+        if (to !== null) k.seek(to);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   if (state.kind === "notfound") {
     return (
@@ -533,6 +586,7 @@ export function AnalysisView({ id }: { id: string }) {
               {state.kind === "job" && state.buckets ? (
                 <BucketChart
                   key={id}
+                  keyHint={!keysSeen}
                   buckets={recount && filtered ? filtered : state.buckets}
                   onSeek={seekPeak}
                   getTime={getTime}
@@ -634,7 +688,13 @@ export function AnalysisView({ id }: { id: string }) {
                 className="chat-list-wrap"
                 hidden={tab !== "memo"}
               >
-                <MemoPanel jobId={id} getTime={getTime} onSeek={seek} onError={setToast} />
+                <MemoPanel
+                  jobId={id}
+                  getTime={getTime}
+                  onSeek={seek}
+                  onError={setToast}
+                  stampSignal={stampSignal}
+                />
               </div>
               <div
                 role="tabpanel"

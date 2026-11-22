@@ -20,11 +20,14 @@ export function MemoPanel({
   getTime,
   onSeek,
   onError,
+  stampSignal = 0,
 }: {
   jobId: string;
   getTime: () => number;
   onSeek: (sec: number) => void;
   onError: (message: string) => void;
+  /** 増えるたびに今の時刻を差し込む（キー操作の M、#66） */
+  stampSignal?: number;
 }) {
   const [memo, setMemo] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -68,6 +71,12 @@ export function MemoPanel({
       el?.setSelectionRange(r.caret, r.caret);
     });
   };
+
+  const stampRef = useRef(stamp);
+  stampRef.current = stamp;
+  useEffect(() => {
+    if (stampSignal > 0 && loaded) stampRef.current();
+  }, [stampSignal, loaded]);
 
   const parts = splitMemo(memo);
   const left = MEMO_MAX - memo.length;

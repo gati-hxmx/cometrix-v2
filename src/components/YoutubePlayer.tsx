@@ -6,6 +6,9 @@ import { ResumeButton } from "./ResumeButton";
 type YTPlayer = {
   seekTo(sec: number, allowSeekAhead: boolean): void;
   playVideo(): void;
+  pauseVideo(): void;
+  /** 1 が再生中 */
+  getPlayerState(): number;
   getCurrentTime(): number;
   destroy(): void;
 };
@@ -26,7 +29,12 @@ declare global {
   }
 }
 
-export type PlayerHandle = { seek(sec: number): void; getTime(): number };
+export type PlayerHandle = {
+  seek(sec: number): void;
+  getTime(): number;
+  /** 再生中なら止め、止まっていれば再生する（キー操作のスペース、#66）。 */
+  togglePlay(): void;
+};
 
 let apiPromise: Promise<YTApi> | null = null;
 function loadApi(): Promise<YTApi> {
@@ -60,6 +68,16 @@ export function YoutubePlayer({ videoId, ref }: { videoId: string; ref?: Ref<Pla
   const [blocked, setBlocked] = useState(false);
 
   useImperativeHandle(ref, () => ({
+    togglePlay() {
+      const p = player.current;
+      if (!p) return;
+      try {
+        if (p.getPlayerState() === 1) p.pauseVideo();
+        else p.playVideo();
+      } catch {
+        // 準備ができていないときは何もしない
+      }
+    },
     getTime() {
       try {
         return player.current?.getCurrentTime() ?? pending.current ?? lastSecRef.current;
