@@ -38,6 +38,13 @@ export function ExportMenu({
   const [clipCount, setClipCount] = useState(0);
   const box = useRef<HTMLDivElement>(null);
   const first = useRef<HTMLAnchorElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+
+  /** 閉じる。キーや項目で閉じたときは ⋮ にフォーカスを戻す（外を押したときは戻さない）。 */
+  const close = (refocus: boolean) => {
+    setOpen(false);
+    if (refocus) trigger.current?.focus();
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -47,7 +54,29 @@ export function ExportMenu({
       if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        trigger.current?.focus();
+        return;
+      }
+      // ↑ ↓ Home End で項目を移る（role=menu の決まった動き）
+      const items = Array.from(
+        box.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
+      );
+      const at = items.indexOf(document.activeElement as HTMLElement);
+      const next =
+        e.key === "ArrowDown"
+          ? (at + 1) % items.length
+          : e.key === "ArrowUp"
+            ? (at - 1 + items.length) % items.length
+            : e.key === "Home"
+              ? 0
+              : e.key === "End"
+                ? items.length - 1
+                : null;
+      if (next === null || items.length === 0) return;
+      e.preventDefault();
+      items[next].focus();
     };
     document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKey);
@@ -58,7 +87,7 @@ export function ExportMenu({
   }, [open, jobId]);
 
   const copy = async (text: string | null, done: string) => {
-    setOpen(false);
+    close(true);
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
@@ -69,7 +98,7 @@ export function ExportMenu({
   };
 
   const saveXml = () => {
-    setOpen(false);
+    close(true);
     const clips = readClips(jobId);
     if (clips.length === 0) return;
     const blob = new Blob([markerXml(title, durationSec, clips)], { type: "application/xml" });
@@ -82,13 +111,14 @@ export function ExportMenu({
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
 
-  const chapters = chapterText(toc, unit);
+  const chapters = chapterText(toc, { unit, durationSec });
   const noClips = clipCount === 0 ? "「範囲」で切り抜きの範囲を足すと使えます" : null;
   const csvHref = `/api/jobs/${jobId}/export${filterQuery ? `?${filterQuery}` : ""}`;
 
   return (
     <div ref={box}>
       <button
+        ref={trigger}
         type="button"
         aria-label="書き出し"
         aria-haspopup="menu"
@@ -111,13 +141,21 @@ export function ExportMenu({
         ⋮
       </button>
       {open && (
-        <div role="menu" aria-label="書き出し" className="menu-pop">
+        <div
+          role="menu"
+          aria-label="書き出し"
+          className="menu-pop"
+          onBlur={(e) => {
+            // Tab でメニューの外へ出たら閉じる（後ろの画面にフォーカスがあるのに開いたままにしない）
+            if (!box.current?.contains(e.relatedTarget as Node | null)) setOpen(false);
+          }}
+        >
           <a
             ref={first}
             role="menuitem"
             href={csvHref}
             download={exportFileName(title, "csv")}
-            onClick={() => setOpen(false)}
+            onClick={() => close(true)}
             style={row}
           >
             <RowText
@@ -180,12 +218,26 @@ const row = {
   cursor: "pointer",
 } as const;
 
-function RowText({ icon, text, note }: { icon: IconName; text: string; note?: string | null }) {
+function RowText({
+  icon,
+  text,
+  note,
+  dim = false,
+}: {
+  icon: IconName;
+  text: string;
+  note?: string | null;
+  /** 使えない行。アイコンと名前だけを薄くし、理由の文は読める濃さのまま残す。 */
+  dim?: boolean;
+}) {
+  const faded = dim ? { opacity: 0.5 } : undefined;
   return (
     <>
-      <Icon name={icon} />
+      <span style={{ display: "inline-flex", ...faded }}>
+        <Icon name={icon} />
+      </span>
       <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <span>{text}</span>
+        <span style={faded}>{text}</span>
         {note && <span style={{ fontSize: 12, color: "var(--muted)" }}>{note}</span>}
       </span>
     </>
@@ -212,9 +264,9 @@ function MenuButton({
       role="menuitem"
       aria-disabled={disabled}
       onClick={disabled ? undefined : onClick}
-      style={{ ...row, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.6 : 1 }}
+      style={{ ...row, cursor: disabled ? "default" : "pointer" }}
     >
-      <RowText icon={icon} text={text} note={disabled ? disabledNote : note} />
+      <RowText icon={icon} text={text} note={disabled ? disabledNote : note} dim={disabled} />
     </button>
   );
 }

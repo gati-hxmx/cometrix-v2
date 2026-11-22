@@ -68,29 +68,56 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     throw e;
   }
   const enc = new TextEncoder();
-  const body = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      try {
-        controller.enqueue(enc.encode(csvHead()));
-        let rows = first;
-        while (rows.length > 0) {
-          controller.enqueue(enc.encode(rows.map(csvRow).join("")));
-          if (rows.length < PAGE) break;
-          rows = await page(rows[rows.length - 1]);
+  // 受け手が読んだ分だけ次のページを読む（pull）。遅い相手でもサーバーに全件をためず、切られたら読むのをやめる。
+  // 流し始めた後の失敗（タイムアウトなど）は状態を変えられないので、ファイルが途中で切れる。
+  let rows: Awaited<ReturnType<typeof page>> | null = first;
+  let headSent = false;
+  const body = new ReadableStream<Uint8Array>(
+    {
+      async pull(controller) {
+        if (!headSent) {
+          headSent = true;
+          controller.enqueue(enc.encode(csvHead()));
+          return;
         }
-        controller.close();
-      } catch (e) {
-        controller.error(e);
-      }
+        if (rows === null) {
+          controller.close();
+          return;
+        }
+        const cur = rows;
+        if (cur.length > 0) controller.enqueue(enc.encode(cur.map(csvRow).join("")));
+        if (cur.length < PAGE) {
+          rows = null;
+          controller.close();
+          return;
+        }
+        try {
+          rows = await page(cur[cur.length - 1]);
+        } catch (e) {
+          controller.error(e);
+        }
+      },
+      cancel() {
+        rows = null;
+      },
     },
-  });
+    { highWaterMark: 1 },
+  );
   const title = (job.result as { title?: string } | null)?.title ?? "";
   const name = exportFileName(title, "csv");
   return new Response(body, {
     headers: {
       "content-type": "text/csv; charset=utf-8",
-      "content-disposition": `attachment; filename="chat.csv"; filename*=UTF-8''${encodeURIComponent(name)}`,
+      "content-disposition": `attachment; filename="chat.csv"; filename*=UTF-8''${encodeRfc8187(name)}`,
       "cache-control": "no-store",
     },
   });
+}
+
+/** RFC 8187 の filename* の値。encodeURIComponent が残す ' ( ) * も符号にする。 */
+function encodeRfc8187(s: string) {
+  return encodeURIComponent(s).replace(
+    /['()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
 }

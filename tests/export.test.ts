@@ -24,6 +24,7 @@ describe("CSV", () => {
     expect(csvCell("+1")).toBe("'+1");
     expect(csvCell("-w")).toBe("'-w");
     expect(csvCell("@user")).toBe("'@user");
+    expect(csvCell("  =1+1")).toBe("'  =1+1");
   });
 
   test("行は 時刻,秒,投稿者,コメント で、1時間以上は h:mm:ss。先頭は BOM 付きの見出し", () => {
@@ -61,9 +62,21 @@ describe("チャプター文", () => {
           { startSec: 60, count: 3 },
           { startSec: 120, count: 4 },
         ],
-        "人",
+        { unit: "人" },
       ),
     ).toContain("1:00 盛り上がり（3 人）");
+  });
+
+  test("動画の終わりまで10秒ない山は入れない（最後のチャプターも10秒以上）", () => {
+    const entries = [
+      { startSec: 60, count: 3 },
+      { startSec: 120, count: 4 },
+      { startSec: 595, count: 9 },
+    ];
+    expect(chapterText(entries, { durationSec: 600 })).toBe(
+      "0:00 はじめ\n1:00 盛り上がり（3 件）\n2:00 盛り上がり（4 件）",
+    );
+    expect(chapterText(entries.slice(1), { durationSec: 600 })).toBeNull();
   });
 });
 

@@ -3,10 +3,10 @@ import type { TocEntry } from "./toc";
 
 // 分析の結果を、ほかの道具でそのまま使える形にする（#59）。動画そのものは扱わない（YouTube の規約）。
 
-/** CSV の1つのセル。表計算ソフトで式として動かないよう、= + - @ などで始まる値は ' を前に付ける。 */
+/** CSV の1つのセル。表計算ソフトで式として動かないよう、= + - @ などで始まる値（前の空白も含む）は ' を前に付ける。 */
 export function csvCell(value: string | number): string {
   let s = String(value);
-  if (typeof value === "string" && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  if (typeof value === "string" && /^\s*[=+\-@]|^[\t\r]/.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
 }
 
@@ -32,12 +32,20 @@ export const CHAPTER_GAP_SEC = 10;
 /**
  * 目次の山を、YouTube の説明欄に貼るチャプター文にする。決まりを満たせないときは null。
  * 山の数は今グラフに出している数（コメント・笑い・人数）のまま。
+ * 最後のチャプターも10秒以上にするため、動画の終わりまで10秒ない山は入れない。
  */
-export function chapterText(entries: TocEntry[], unit = "件"): string | null {
+export function chapterText(
+  entries: TocEntry[],
+  {
+    unit = "件",
+    durationSec = Number.POSITIVE_INFINITY,
+  }: { unit?: string; durationSec?: number } = {},
+): string | null {
   const sorted = [...entries].sort((a, b) => a.startSec - b.startSec);
   const lines: { sec: number; text: string }[] = [{ sec: 0, text: "はじめ" }];
   for (const e of sorted) {
     if (e.startSec - lines[lines.length - 1].sec < CHAPTER_GAP_SEC) continue;
+    if (durationSec - e.startSec < CHAPTER_GAP_SEC) continue;
     lines.push({
       sec: e.startSec,
       text: `盛り上がり（${e.count.toLocaleString("ja-JP")} ${unit}）`,
