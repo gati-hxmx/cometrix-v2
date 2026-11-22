@@ -28,6 +28,30 @@ import { type PlayerHandle, YoutubePlayer } from "./YoutubePlayer";
 
 const KEYS_SEEN_KEY = "cometrix-keys-seen";
 
+type Note = { id: number; message: string; undo?: () => void };
+
+/** お知らせ1つ。閉じる・戻すの関数を id ごとに固定して、4秒で消える時計が描き直しで止まらないようにする。 */
+function NoteToast({
+  note,
+  onClose,
+  onUndo,
+}: {
+  note: Note;
+  onClose: (id: number) => void;
+  onUndo: (id: number) => void;
+}) {
+  const close = useCallback(() => onClose(note.id), [onClose, note.id]);
+  const undo = useCallback(() => onUndo(note.id), [onUndo, note.id]);
+  return (
+    <Toast
+      kind="done"
+      message={note.message}
+      onClose={close}
+      onUndo={note.undo ? undo : undefined}
+    />
+  );
+}
+
 type Job = {
   status: "queued" | "running" | "done" | "failed";
   platform?: "youtube" | "twitch";
@@ -164,8 +188,24 @@ export function AnalysisView({ id }: { id: string }) {
   const [state, setState] = useState<State>({ kind: "loading" });
   const [toast, setToast] = useState<string | null>(null);
   // できました（4秒で消える）のお知らせ。書き出しのコピーなど（#59）。
-  const [doneToast, setDoneToast] = useState<string | null>(null);
-  const closeDoneToast = useCallback(() => setDoneToast(null), []);
+  // できました・［元に戻す］のお知らせ。基本 8-1 のとおり、3つまで重ねて新しいものを上に出す。
+  const [notes, setNotes] = useState<Note[]>([]);
+  const noteId = useRef(0);
+  const pushNote = useCallback((message: string, undo?: () => void) => {
+    noteId.current += 1;
+    const id = noteId.current;
+    setNotes((cur) => [...cur, { id, message, undo }].slice(-3));
+  }, []);
+  const closeNote = useCallback((id: number) => {
+    setNotes((cur) => cur.filter((n) => n.id !== id));
+  }, []);
+  const notesRef = useRef(notes);
+  notesRef.current = notes;
+  const undoNote = useCallback((id: number) => {
+    notesRef.current.find((x) => x.id === id)?.undo?.();
+    // 戻したら、同じ場所で「元に戻しました」に替える（部品 4-2）
+    setNotes((cur) => cur.map((x) => (x.id === id ? { id, message: "元に戻しました。" } : x)));
+  }, []);
   // 分析し直したあとにポーリングを再開するための番号（#99）。
   const [reload, setReload] = useState(0);
   const [reanalyzing, setReanalyzing] = useState(false);
@@ -176,7 +216,6 @@ export function AnalysisView({ id }: { id: string }) {
   const [filter, setFilter] = useState<Filter>(EMPTY_FILTER);
   // 保存した絞り込みの呼び出し（#67）
   const [preset, setPreset] = useState<{ filter: Filter; n: number } | null>(null);
-  const [undoToast, setUndoToast] = useState<{ message: string; undo: () => void } | null>(null);
   const [tab, setTab] = useState<Tab>("chat");
   const [stampSignal, setStampSignal] = useState(0);
   // 今グラフに出している範囲（区間の番号）。画像の保存に使う（#69）。
@@ -524,7 +563,7 @@ export function AnalysisView({ id }: { id: string }) {
                             }
                           : null
                       }
-                      onDone={setDoneToast}
+                      onDone={pushNote}
                       onError={setToast}
                     />
                   </div>
@@ -718,8 +757,8 @@ export function AnalysisView({ id }: { id: string }) {
                         setPreset((p) => ({ filter: s.filter, n: (p?.n ?? 0) + 1 }));
                         setTerms(s.terms);
                       }}
-                      onDone={setDoneToast}
-                      onUndoable={(message, undo) => setUndoToast({ message, undo })}
+                      onDone={pushNote}
+                      onUndoable={pushNote}
                       onError={setToast}
                     />
                   }
@@ -776,19 +815,12 @@ export function AnalysisView({ id }: { id: string }) {
           )}
         </div>
       )}
-      <Toast message={toast} onClose={closeToast} />
-      {!toast && undoToast && (
-        <Toast
-          kind="done"
-          message={undoToast.message}
-          onUndo={() => {
-            undoToast.undo();
-            setUndoToast(null);
-          }}
-          onClose={() => setUndoToast(null)}
-        />
-      )}
-      {!toast && !undoToast && <Toast kind="done" message={doneToast} onClose={closeDoneToast} />}
+      <div className="toast-stack">
+        {[...notes].reverse().map((n) => (
+          <NoteToast key={n.id} note={n} onClose={closeNote} onUndo={undoNote} />
+        ))}
+        <Toast message={toast} onClose={closeToast} />
+      </div>
     </main>
   );
 }

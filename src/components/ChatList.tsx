@@ -254,6 +254,8 @@ export function ChatList({
     onFilter(applied);
   }, [applied, onFilter]);
 
+  // ChatList は札を切り替えても消さない（hidden で隠す）ので、n が増えたときだけ入れ替える。
+  // 作り直すと最後のチップを当て直すので、作り直す形に変えるときは n の扱いも見直す。
   const presetN = preset?.n ?? 0;
   const presetRef = useRef(preset);
   presetRef.current = preset;

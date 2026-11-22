@@ -9,6 +9,7 @@ import {
   restoreSaved,
   sameAs,
   saveFilter,
+  undoOverwrite,
 } from "../src/lib/saved-filters";
 
 // よく使う絞り込みの保存（#67）。保存・呼び出し・消す（元に戻す）。
@@ -32,7 +33,7 @@ describe("保存", () => {
       if (r.ok) list = r.list;
     }
     const r = saveFilter(list, "a", f({ q: ["z"] }), []);
-    expect(r.ok && r.replaced).toBe(true);
+    expect(r.ok && r.replaced?.filter.q).toEqual(["a"]);
     expect(r.ok && r.list.map((s) => [s.name, s.filter.q[0]])).toEqual([
       ["a", "z"],
       ["b", "b"],
@@ -110,5 +111,32 @@ describe("消す・元に戻す", () => {
     expect(removeSaved(list, "z").removed).toBeNull();
     const again = [...list.slice(0, 1), { name: "b", filter: f({ q: ["new"] }), terms: [] }];
     expect(restoreSaved(again, list[1], 1)).toBe(again);
+  });
+});
+
+describe("見直し（PR #111 のレビュー）", () => {
+  test("絵文字の名前も、保存した後に読み直せる", () => {
+    const name = "😂".repeat(MAX_NAME);
+    const r = saveFilter([], name, f({ q: ["w"] }), []);
+    expect(r.ok).toBe(true);
+    expect(r.ok && parseSaved(JSON.stringify(r.list)).map((s) => s.name)).toEqual([name]);
+  });
+
+  test("上書きは元の中身に戻せる", () => {
+    const first = saveFilter([], "a", f({ q: ["old"] }), []);
+    if (!first.ok) throw new Error();
+    const second = saveFilter(first.list, "a", f({ q: ["new"] }), []);
+    if (!second.ok || !second.replaced) throw new Error();
+    expect(undoOverwrite(second.list, second.replaced, second.index)[0].filter.q).toEqual(["old"]);
+  });
+
+  test("読めない形・多すぎる重ねる言葉・長すぎる語の行は読まない", () => {
+    const rows = [
+      { name: "re", filter: { re: ["("] } },
+      { name: "lines", filter: {}, terms: ["a", "b", "c"] },
+      { name: "long", filter: { q: ["あ".repeat(101)] } },
+      { name: "ok", filter: { re: ["^\\d+$"] } },
+    ];
+    expect(parseSaved(JSON.stringify(rows)).map((s) => s.name)).toEqual(["ok"]);
   });
 });

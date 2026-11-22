@@ -155,10 +155,31 @@ body {
   font-weight: 700;
   text-decoration: underline;
 }
+/* お知らせを重ねる入れ物（基本 8-1：3つまで、新しいものが上） */
+.toast-stack {
+  position: fixed;
+  z-index: 20;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast-stack .toast {
+  position: static;
+  width: auto;
+  pointer-events: auto;
+}
 @media (min-width: 900px) {
-  .toast {
+  .toast,
+  .toast-stack {
     left: auto;
     width: 380px;
+  }
+  .toast-stack .toast {
+    width: auto;
   }
 }
 @media (min-width: 1024px) {

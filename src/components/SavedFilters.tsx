@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Filter } from "../lib/chat-filter";
 import {
   defaultName,
@@ -12,7 +12,11 @@ import {
   type SaveReason,
   sameAs,
   saveFilter,
+  undoOverwrite,
 } from "../lib/saved-filters";
+
+/** 畳んだときに出すチップの数 */
+const FOLD = 6;
 
 const REASON: Record<SaveReason, string> = {
   empty: "名前を入れてください",
@@ -55,6 +59,10 @@ export function SavedFilters({
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  // ［元に戻す］はあとで押されるので、その時点の一覧を ref から読む（消した後に保存したものを落とさない）
+  const listRef = useRef(list);
+  listRef.current = list;
 
   useEffect(() => {
     try {
@@ -64,14 +72,18 @@ export function SavedFilters({
     }
   }, []);
 
-  const write = (next: Saved[]) => {
-    setList(next);
+  /** 保存できたときだけ画面の一覧も変える（保存できないのに「保存しました」と出さない）。 */
+  const write = (next: Saved[]): boolean => {
     try {
       if (next.length === 0) localStorage.removeItem(SAVED_KEY);
       else localStorage.setItem(SAVED_KEY, JSON.stringify(next));
     } catch {
       onError("絞り込みをこのブラウザに保存できませんでした。");
+      return false;
     }
+    listRef.current = next;
+    setList(next);
+    return true;
   };
 
   // 今の絞り込みがもう保存してあるものと同じなら、保存のボタンは出さない
@@ -82,28 +94,33 @@ export function SavedFilters({
       setError(REASON[r.reason]);
       return;
     }
-    write(r.list);
+    if (!write(r.list)) return;
     setEditing(false);
     setError(null);
-    onDone(`「${name.trim()}」を${r.replaced ? "上書き" : ""}保存しました。`);
+    const saved = name.trim();
+    const previous = r.replaced;
+    if (previous) {
+      // 上書きは取り返せる操作なので、［元に戻す］で前の中身に戻せるようにする（部品 4-2）
+      onUndoable(`「${saved}」を上書き保存しました。`, () =>
+        write(undoOverwrite(listRef.current, previous, r.index)),
+      );
+    } else onDone(`「${saved}」を保存しました。`);
   };
 
   const remove = (target: string) => {
     const r = removeSaved(list, target);
     if (!r.removed) return;
     const removed = r.removed;
-    write(r.list);
-    onUndoable(`「${target}」を消しました。`, () => {
-      // 戻すときは、その時点の保存を読み直してから足す（ほかのタブでの保存を消さない）
-      let cur = r.list;
-      try {
-        cur = parseSaved(localStorage.getItem(SAVED_KEY));
-      } catch {}
-      write(restoreSaved(cur, removed, r.index));
-    });
+    if (!write(r.list)) return;
+    onUndoable(`「${target}」を消しました。`, () =>
+      write(restoreSaved(listRef.current, removed, r.index)),
+    );
   };
 
   if (list.length === 0 && !canSave) return null;
+  // 多いときは最初の数個だけ出し、チャットの一覧を押し下げすぎない（18項目の12・部品 4-5）
+  const folded = !expanded && list.length > FOLD;
+  const shown = folded ? list.filter((s, i) => i < FOLD || sameAs(s, filter, terms)) : list;
 
   return (
     <div style={{ display: "grid", gap: 6, marginBottom: 8, fontSize: 13, color: "var(--muted)" }}>
@@ -121,7 +138,7 @@ export function SavedFilters({
               gap: 6,
             }}
           >
-            {list.map((s) => {
+            {shown.map((s) => {
               const on = sameAs(s, filter, terms);
               return (
                 <li
@@ -129,10 +146,11 @@ export function SavedFilters({
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
-                    border: "1px solid var(--accent-dark)",
-                    borderRadius: 16,
-                    background: on ? "var(--accent-weak)" : "var(--surface)",
-                    color: "var(--accent-dark)",
+                    // 絞り込みの語のチップ（枠線の丸）と見分けられるよう、枠のない塗りの角丸にする
+                    border: 0,
+                    borderRadius: 6,
+                    background: on ? "var(--accent-weak)" : "var(--surface-2)",
+                    color: on ? "var(--accent-dark)" : "var(--text)",
                     fontSize: 14,
                     maxWidth: "100%",
                   }}
@@ -160,13 +178,14 @@ export function SavedFilters({
                   <button
                     type="button"
                     aria-label={`${s.name} を消す`}
+                    title="保存した絞り込みを消す"
                     onClick={() => remove(s.name)}
                     style={{
                       minWidth: 44,
                       minHeight: 44,
                       border: 0,
                       background: "none",
-                      color: "inherit",
+                      color: "var(--muted)",
                       cursor: "pointer",
                       font: "inherit",
                     }}
@@ -177,6 +196,16 @@ export function SavedFilters({
               );
             })}
           </ul>
+          {list.length > FOLD && (
+            <button
+              type="button"
+              aria-expanded={!folded}
+              onClick={() => setExpanded((v) => !v)}
+              style={{ ...pill, justifySelf: "start" }}
+            >
+              {folded ? `ほかに ${list.length - shown.length} 個 ▾` : "少なく表示 ▴"}
+            </button>
+          )}
         </>
       )}
       {editing ? (
@@ -187,7 +216,7 @@ export function SavedFilters({
               id="saved-filter-name"
               type="text"
               value={name}
-              maxLength={MAX_NAME + 10}
+              maxLength={MAX_NAME * 2}
               // biome-ignore lint/a11y/noAutofocus: 「保存」を押した直後に名前を打てるように
               autoFocus
               onChange={(e) => {
