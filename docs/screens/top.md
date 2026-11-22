@@ -29,3 +29,5 @@ URL を入れて分析を始める入口の画面です。オーナーが選ん�
 
 - スマホのホーム画面に置ける（マニフェスト `app/manifest.ts`、アイコンは `app/icons/` でビルド時に作る）。色は `src/lib/app-colors.ts`（globals.css と同じ値）
 - YouTube・Twitch の「共有」で Cometrix を選ぶと、このトップが開き、受け取った URL が入力欄に入っている（`src/lib/share.ts`。url・text・title のどこに来ても拾う）。分析は［分析］を押してから始める
+- 共有の受け先になるのは、Android の Chrome でホーム画面に置いたときだけ。iPhone（Safari）は共有の受け先に対応していないので、URL をコピーして貼る
+- 分かっている制限：スマホの上の帯の色（theme-color）は端末の明暗設定に合わせる。画面右上でテーマを切り替えても帯の色は変わらない

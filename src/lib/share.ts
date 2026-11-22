@@ -5,7 +5,10 @@ import { parseVideoUrl } from "./youtube-url";
 
 type Params = Record<string, string | string[] | undefined>;
 
-const URL_RE = /https?:\/\/[^\s"'<>]+/g;
+// 全角のかっこ・句読点は URL に入らないものとして区切る（「見て（https://youtu.be/…）」）
+const URL_RE = /https?:\/\/[^\s"'<>（）「」『』【】。、，！？]+/g;
+// 文の終わりの記号は URL の一部にしない（「https://youtu.be/… .」「(https://…)」）
+const TRAILING = /[.,;:!?)\]}]+$/;
 
 /** 共有で受け取った値から、分析できる URL を1つ選ぶ。分析できる形がなければ最初の URL、URL がなければ null。 */
 export function sharedUrl(params: Params): string | null {
@@ -13,7 +16,10 @@ export function sharedUrl(params: Params): string | null {
     const v = params[k];
     return (Array.isArray(v) ? v : [v]).filter((s): s is string => typeof s === "string");
   });
-  const found = values.flatMap((v) => v.match(URL_RE) ?? []).slice(0, 10);
+  const found = values
+    .flatMap((v) => v.match(URL_RE) ?? [])
+    .map((u) => u.replace(TRAILING, ""))
+    .slice(0, 10);
   if (found.length === 0) return null;
   return found.find((u) => parseVideoUrl(u).ok) ?? found[0];
 }

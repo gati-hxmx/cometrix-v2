@@ -4,16 +4,18 @@ import { APP_COLORS } from "../../../lib/app-colors";
 // ホーム画面のアイコン（#70）。線のアイコン（Lucide の chart-column）を、--accent-weak の角丸の四角に --accent で描く。
 // public/ に置くとコンテナ（Dockerfile）に入らないので、ビルドのときに PNG を作る。
 const ICONS = {
-  "icon-192.png": { size: 192, maskable: false },
-  "icon-512.png": { size: 512, maskable: false },
+  "icon-192.png": { size: 192, bleed: false, art: 0.64 },
+  "icon-512.png": { size: 512, bleed: false, art: 0.64 },
   // maskable は端末が丸や四角に切り抜くので、地を全面にし、絵を内側の 50% に収める
-  "maskable-512.png": { size: 512, maskable: true },
-  "apple-touch-icon.png": { size: 180, maskable: true },
+  "maskable-512.png": { size: 512, bleed: true, art: 0.5 },
+  // iOS は角を丸めるだけで切り抜かないので、地は全面・絵は通常と同じ大きさ
+  "apple-touch-icon.png": { size: 180, bleed: true, art: 0.64 },
 } as const;
 
 type Name = keyof typeof ICONS;
 
 export const dynamic = "force-static";
+export const dynamicParams = false;
 
 export function generateStaticParams() {
   return Object.keys(ICONS).map((name) => ({ name }));
@@ -23,8 +25,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
   const { name } = await params;
   const icon = ICONS[name as Name];
   if (!icon) return new Response("not found", { status: 404 });
-  const { size, maskable } = icon;
-  const art = size * (maskable ? 0.5 : 0.64);
+  const { size, bleed } = icon;
+  const art = size * icon.art;
   return new ImageResponse(
     <div
       style={{
@@ -34,7 +36,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
         alignItems: "center",
         justifyContent: "center",
         background: APP_COLORS.light.accentWeak,
-        borderRadius: maskable ? 0 : size * 0.22,
+        borderRadius: bleed ? 0 : size * 0.22,
       }}
     >
       <svg

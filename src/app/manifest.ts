@@ -5,6 +5,7 @@ import { APP_COLORS } from "../lib/app-colors";
 // 共有の受け先：YouTube・Twitch の「共有」から URL を受け取り、トップの入力欄に入れる（src/lib/share.ts）。
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    id: "/",
     name: "Cometrix",
     short_name: "Cometrix",
     description: "配信アーカイブのコメントから、盛り上がった場面を見つける",

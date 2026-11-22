@@ -22,3 +22,37 @@ test("分析できる URL を優先し、なければ最初の URL。URL がな�
   expect(sharedUrl({ text: "URL なし" })).toBeNull();
   expect(sharedUrl({})).toBeNull();
 });
+
+test("文の終わりの記号・全角のかっこは URL に含めない", () => {
+  const v = "https://youtu.be/aaaaaaaaaaa";
+  expect(sharedUrl({ text: `見て（${v}）` })).toBe(v);
+  expect(sharedUrl({ text: `見て ${v}。` })).toBe(v);
+  expect(sharedUrl({ text: `見て「${v}」` })).toBe(v);
+  expect(sharedUrl({ text: `see (${v}).` })).toBe(v);
+  expect(sharedUrl({ text: `${v}, ${v}!` })).toBe(v);
+});
+
+test("javascript: や data: は拾わない", () => {
+  expect(sharedUrl({ url: "javascript:alert(1)" })).toBeNull();
+  expect(sharedUrl({ url: "data:text/html,<b>x</b>" })).toBeNull();
+  expect(sharedUrl({ text: 'x"><img src=x onerror=alert(1)>' })).toBeNull();
+});
+
+test("同じ名前が2回来たときも、分析できる方を選ぶ", () => {
+  expect(sharedUrl({ url: ["https://example.com/a", "https://youtu.be/aaaaaaaaaaa"] })).toBe(
+    "https://youtu.be/aaaaaaaaaaa",
+  );
+});
+
+test("どれも分析できるときは url → text → title の順", () => {
+  expect(
+    sharedUrl({
+      title: "https://youtu.be/ccccccccccc",
+      text: "https://youtu.be/bbbbbbbbbbb",
+      url: "https://youtu.be/aaaaaaaaaaa",
+    }),
+  ).toBe("https://youtu.be/aaaaaaaaaaa");
+  expect(
+    sharedUrl({ title: "https://youtu.be/ccccccccccc", text: "https://youtu.be/bbbbbbbbbbb" }),
+  ).toBe("https://youtu.be/bbbbbbbbbbb");
+});

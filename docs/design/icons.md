@@ -40,7 +40,6 @@
 | 送る | `send` |
 | 表示：一覧 | `list` |
 | 表示：表 | `table` |
-
 | Cometrix のアプリのアイコン（ホーム画面、#70） | `chart-column`（`--accent-weak` の角丸の四角に `--accent` の線。仮のもの） |
 
 （アプリごとの意味をここに足す）
