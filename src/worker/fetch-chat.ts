@@ -13,6 +13,10 @@ import { classifyYtDlpError, JobFailure } from "./errors";
  */
 export type FetchedChat = {
   title: string;
+  /** 配信したチャンネル（「youtube:UC…」「twitch:1234」）。常連と初見の比べに使う（#64）。分からなければ無し */
+  channelId?: string;
+  /** 配信した時刻（UNIX 秒）。同じチャンネルの「前の配信」を決めるのに使う。分からなければ無し */
+  streamedAt?: number;
   messages: ChatMessage[];
   clips?: Clip[];
   saved?: boolean;
@@ -91,6 +95,11 @@ export function ytDlpArgs(url: string, outBase: string): string[] {
     // 配信の長さ（秒）。取得の前に出るので、進み具合の分母にする（#43）。
     "--print",
     "duration",
+    // 常連と初見（#64）：チャンネルと配信の時刻。無いときは NA と出る。
+    "--print",
+    "channel_id",
+    "--print",
+    "%(release_timestamp,timestamp)s",
     "-o",
     outBase,
     "--",
@@ -197,7 +206,8 @@ export function makeYtDlpFetcher(opts: YtDlpOptions = {}): ChatFetcher {
       } catch {
         throw new JobFailure("no_chat");
       }
-      return { title: stdout.trim().split("\n")[0] ?? "", messages: parseLiveChat(raw) };
+      const head = parsePrinted(stdout);
+      return { ...head, messages: parseLiveChat(raw) };
     } finally {
       clearInterval(timer);
       await rm(dir, { recursive: true, force: true });
@@ -206,3 +216,15 @@ export function makeYtDlpFetcher(opts: YtDlpOptions = {}): ChatFetcher {
 }
 
 export const fetchWithYtDlp: ChatFetcher = makeYtDlpFetcher();
+
+/** yt-dlp の --print の行（タイトル・長さ・チャンネル・時刻）を読む。読めないものは無しにする。 */
+export function parsePrinted(
+  stdout: string,
+): Pick<FetchedChat, "title" | "channelId" | "streamedAt"> {
+  const lines = stdout.split("\n").map((l) => l.trim());
+  const out: Pick<FetchedChat, "title" | "channelId" | "streamedAt"> = { title: lines[0] ?? "" };
+  if (/^UC[\w-]{10,40}$/.test(lines[2] ?? "")) out.channelId = `youtube:${lines[2]}`;
+  const at = Number(lines[3]);
+  if (/^\d{9,11}$/.test(lines[3] ?? "") && Number.isFinite(at)) out.streamedAt = at;
+  return out;
+}

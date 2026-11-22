@@ -8,6 +8,8 @@ while [ "$#" -gt 0 ] && [ "$1" != "-o" ]; do shift; done
 out="$2.live_chat.json"
 echo "テスト配信"
 echo "120"
+echo "UCabcdefghijklmnopqrstuv"
+echo "1700000000"
 line='{"replayChatItemAction":{"actions":[{"addChatItemAction":{"item":{"liveChatTextMessageRenderer":{"message":{"runs":[{"text":"w"}]},"authorName":{"simpleText":"a"}}}}}],"videoOffsetTimeMsec":"1000"}}'
 if [ "$FAKE_YT_DLP" = "flaky" ]; then
   echo "ERROR: [youtube] aaaaaaaaaaa: Unable to download JSON metadata: HTTP Error 503" >&2

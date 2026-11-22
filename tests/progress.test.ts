@@ -57,6 +57,7 @@ describe("取得の進み具合（#43）", () => {
   test("yt-dlp にはタイトルの次に配信の長さを出させる", () => {
     const args = ytDlpArgs("https://www.youtube.com/watch?v=aaaaaaaaaaa", "/tmp/x/chat");
     const prints = args.flatMap((a, i) => (args[i - 1] === "--print" ? [a] : []));
-    expect(prints).toEqual(["title", "duration"]);
+    // 3・4行目は常連と初見（#64）のためのチャンネルと配信の時刻
+    expect(prints).toEqual(["title", "duration", "channel_id", "%(release_timestamp,timestamp)s"]);
   });
 });
