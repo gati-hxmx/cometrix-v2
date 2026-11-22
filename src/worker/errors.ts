@@ -17,9 +17,14 @@ export const FAILURE_MESSAGES: Record<FailureCode, string> = {
 };
 
 export class JobFailure extends Error {
+  /**
+   * retryable は、時間をおけば取れる見込みがある失敗（通信の途切れ・進まない取得・配信元の 5xx）。
+   * 試行が上限（MAX_ATTEMPTS）に達するまで queued に戻し、Twitch は保存済みの続きから取り直す（#47）。
+   */
   constructor(
     public code: FailureCode,
     detail?: string,
+    public retryable = false,
   ) {
     super(detail ? `${FAILURE_MESSAGES[code]}（${detail}）` : FAILURE_MESSAGES[code]);
   }
