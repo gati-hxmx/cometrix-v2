@@ -5,6 +5,7 @@ import type { Bucket } from "../lib/chart";
 import { EMPTY_FILTER, filterParams, isFiltering } from "../lib/chat-filter";
 import { BucketChart } from "./BucketChart";
 import { ChatList, type Filter } from "./ChatList";
+import { ClipPanel } from "./ClipPanel";
 import { MemoPanel } from "./MemoPanel";
 import { PlaybackBar } from "./PlaybackBar";
 import { Segmented } from "./Segmented";
@@ -71,7 +72,10 @@ export function AnalysisView({ id }: { id: string }) {
   const playerBox = useRef<HTMLDivElement>(null);
   const closeToast = useCallback(() => setToast(null), []);
   const [filter, setFilter] = useState<Filter>(EMPTY_FILTER);
-  const [tab, setTab] = useState<"chat" | "memo">("chat");
+  const [tab, setTab] = useState<"chat" | "memo" | "clip">("chat");
+  const [pickMode, setPickMode] = useState(false);
+  const [picked, setPicked] = useState<{ start: number; end: number; n: number } | null>(null);
+  const [mark, setMark] = useState<{ start: number; end: number } | null>(null);
   const [filtered, setFiltered] = useState<Bucket[] | null>(null);
   const [series, setSeries] = useState<"all" | "laugh">("all");
   const laugh = series === "laugh";
@@ -284,6 +288,11 @@ export function AnalysisView({ id }: { id: string }) {
                   getTime={getTime}
                   filtered={filtering && filtered !== null}
                   laugh={laugh && filtered !== null}
+                  pickRange={pickMode && tab === "clip"}
+                  onPickRange={(a, b) =>
+                    setPicked((p) => ({ start: a, end: b, n: (p?.n ?? 0) + 1 }))
+                  }
+                  mark={mark}
                 />
               ) : (
                 <div
@@ -307,10 +316,10 @@ export function AnalysisView({ id }: { id: string }) {
             <aside className="analysis-chat" style={{ ...card, marginTop: 16 }}>
               <div
                 role="tablist"
-                aria-label="チャットとメモ"
+                aria-label="チャット・メモ・範囲"
                 style={{ display: "flex", gap: 8, marginBottom: 12 }}
               >
-                {(["chat", "memo"] as const).map((k) => (
+                {(["chat", "memo", "clip"] as const).map((k) => (
                   <button
                     key={k}
                     type="button"
@@ -322,7 +331,9 @@ export function AnalysisView({ id }: { id: string }) {
                     onClick={() => setTab(k)}
                     onKeyDown={(e) => {
                       if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-                        const next = k === "chat" ? "memo" : "chat";
+                        const order = ["chat", "memo", "clip"] as const;
+                        const d = e.key === "ArrowRight" ? 1 : order.length - 1;
+                        const next = order[(order.indexOf(k) + d) % order.length];
                         setTab(next);
                         document.getElementById(`tab-${next}`)?.focus();
                       }
@@ -339,7 +350,7 @@ export function AnalysisView({ id }: { id: string }) {
                       color: tab === k ? "var(--accent-dark)" : "var(--text)",
                     }}
                   >
-                    {k === "chat" ? "チャット" : "メモ"}
+                    {k === "chat" ? "チャット" : k === "memo" ? "メモ" : "範囲"}
                   </button>
                 ))}
               </div>
@@ -366,6 +377,23 @@ export function AnalysisView({ id }: { id: string }) {
                 hidden={tab !== "memo"}
               >
                 <MemoPanel jobId={id} getTime={getTime} onSeek={seek} onError={setToast} />
+              </div>
+              <div
+                role="tabpanel"
+                id="panel-clip"
+                aria-labelledby="tab-clip"
+                className="chat-list-wrap"
+                hidden={tab !== "clip"}
+              >
+                <ClipPanel
+                  jobId={id}
+                  getTime={getTime}
+                  onSeek={seek}
+                  onError={setToast}
+                  picked={picked}
+                  onPickMode={setPickMode}
+                  onMark={setMark}
+                />
               </div>
             </aside>
           )}

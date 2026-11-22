@@ -48,6 +48,9 @@ export function BucketChart({
   getTime,
   filtered = false,
   laugh = false,
+  pickRange = false,
+  onPickRange,
+  mark = null,
 }: {
   buckets: Bucket[];
   onSeek: (sec: number) => void;
@@ -57,6 +60,12 @@ export function BucketChart({
   filtered?: boolean;
   /** 笑いのコメントだけの数（#41）。棒を2番目の系列色にし、文言を「笑い」にする。 */
   laugh?: boolean;
+  /** 範囲をなぞって選ぶ（#58）。入れている間、グラフの上のなぞりは範囲の選択になる。 */
+  pickRange?: boolean;
+  /** なぞり終えたときの始点・終点（秒、小さい順・1秒単位）。 */
+  onPickRange?: (startSec: number, endSec: number) => void;
+  /** 薄く示しておく範囲（秒）。なぞっている間は、なぞっている範囲が優先される。 */
+  mark?: { start: number; end: number } | null;
 }) {
   const total = buckets.length;
   // 選んだ棒は元の区間の番号で持つ（拡大・移動しても同じ棒を指す）。
@@ -78,6 +87,9 @@ export function BucketChart({
   const multi = useRef(false);
   const drag = useRef<{ x: number; range: Range; moved: boolean; id: number } | null>(null);
   const dragged = useRef(false);
+  // 範囲をなぞっている間の、始点と今の位置（秒）。
+  const [sweep, setSweep] = useState<{ from: number; to: number } | null>(null);
+  const sweepId = useRef<number | null>(null);
 
   const full: Range = { start: 0, end: total };
   // 操作中の範囲は小数のまま持ち（少しずつの拡大・移動を積み重ねられる）、表示と棒の番号は整数にそろえる。
@@ -173,6 +185,45 @@ export function BucketChart({
     const r = rect();
     return r ? indexAtX(e.clientX - r.left, r.width, bars.length) : -1;
   };
+
+  const secAt = (clientX: number) => {
+    const r = rect();
+    if (!r || r.width <= 0) return fromSec;
+    const f = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+    return Math.floor(fromSec + f * (toSec - fromSec));
+  };
+  const sweepDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (sweepId.current !== null) return;
+    sweepId.current = e.pointerId;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const t = secAt(e.clientX);
+    setSweep({ from: t, to: t });
+  };
+  const sweepMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerId !== sweepId.current) return;
+    const t = secAt(e.clientX);
+    setSweep((s) => (s ? { ...s, to: t } : s));
+  };
+  const sweepUp = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerId !== sweepId.current) return;
+    sweepId.current = null;
+    const s = sweep;
+    const t = secAt(e.clientX);
+    setSweep(null);
+    if (!s) return;
+    const [a, b] = s.from <= t ? [s.from, t] : [t, s.from];
+    // 押しただけ（幅が 1 秒もない）は範囲にしない。
+    if (b > a) onPickRange?.(a, b);
+  };
+  const sweepCancel = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerId !== sweepId.current) return;
+    sweepId.current = null;
+    setSweep(null);
+  };
+  const shade = sweep
+    ? { start: Math.min(sweep.from, sweep.to), end: Math.max(sweep.from, sweep.to) }
+    : mark;
 
   const startGesture = () => {
     const [a, b] = [...pointers.current.values()];
@@ -455,6 +506,41 @@ export function BucketChart({
             </button>
           ))}
         </div>
+        {shade && shade.end > fromSec && shade.start < toSec && (
+          <div
+            aria-hidden
+            data-testid="range-shade"
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: `${Math.max(0, xOf(shade.start))}%`,
+              width: `${Math.min(100, xOf(shade.end)) - Math.max(0, xOf(shade.start))}%`,
+              background: "var(--accent-weak)",
+              borderLeft: "2px solid var(--accent-dark)",
+              borderRight: "2px solid var(--accent-dark)",
+              boxSizing: "border-box",
+              pointerEvents: "none",
+            }}
+          />
+        )}
+        {pickRange && (
+          <div
+            data-testid="range-pick"
+            aria-hidden
+            onPointerDown={sweepDown}
+            onPointerMove={sweepMove}
+            onPointerUp={sweepUp}
+            onPointerCancel={sweepCancel}
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 3,
+              cursor: "crosshair",
+              touchAction: "none",
+            }}
+          />
+        )}
         {playX !== null && (
           <div
             aria-hidden
