@@ -11,3 +11,5 @@ coverage/
 .next/
 tsconfig.tsbuildinfo
 next-env.d.ts
+# DB のバックアップ（コメントが入っているので共有しない）
+backups/

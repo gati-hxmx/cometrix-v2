@@ -1,0 +1,19 @@
+#!/bin/bash
+# Postgres のバックアップを取る（docker compose の db サービス）。
+# 使い方: scripts/db-backup [保存先フォルダ]   （既定は backups/）
+# 作られるファイル: <保存先>/cometrix-<日時>.dump（pg_dump のカスタム形式）
+# 戻し方は docs/backup.md と scripts/db-restore。
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+dir="${1:-backups}"
+mkdir -p "$dir"
+file="$dir/cometrix-$(date +%Y%m%d-%H%M%S).dump"
+
+# 失敗したときに壊れたファイルを残さない。
+trap 'rm -f "$file"' ERR
+
+docker compose exec -T db pg_dump -U cometrix -d cometrix -Fc >"$file"
+[ -s "$file" ] || { echo "db-backup: バックアップが空です" >&2; exit 1; }
+echo "$file"

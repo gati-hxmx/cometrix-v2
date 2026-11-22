@@ -19,6 +19,7 @@ type Job = {
   videoId?: string | null;
   result?: { videoId: string; title: string; totalComments: number } | null;
   error?: { code: string; message: string } | null;
+  messagesPurged?: boolean;
 };
 type State =
   | { kind: "loading" }
@@ -350,13 +351,19 @@ export function AnalysisView({ id }: { id: string }) {
                 className="chat-list-wrap"
                 hidden={tab !== "chat"}
               >
-                <ChatList
-                  jobId={id}
-                  getTime={getTime}
-                  onSeek={seek}
-                  onFilter={onFilter}
-                  onError={setToast}
-                />
+                {job?.messagesPurged ? (
+                  <p role="status" style={{ margin: 0, padding: 16, color: "var(--muted)" }}>
+                    古いため、コメントの本文は整理しました。コメント数のグラフは見られます。
+                  </p>
+                ) : (
+                  <ChatList
+                    jobId={id}
+                    getTime={getTime}
+                    onSeek={seek}
+                    onFilter={onFilter}
+                    onError={setToast}
+                  />
+                )}
               </div>
               <div
                 role="tabpanel"
