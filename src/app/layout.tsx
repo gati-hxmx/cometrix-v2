@@ -1,8 +1,23 @@
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { APP_COLORS } from "../lib/app-colors";
 import { THEME_INIT_SCRIPT } from "../lib/theme";
 import "./globals.css";
 
-export const metadata = { title: "Cometrix" };
+export const metadata: Metadata = {
+  title: "Cometrix",
+  // ホーム画面のアイコン（#70）。マニフェストは app/manifest.ts
+  icons: { icon: "/icons/icon-192.png", apple: "/icons/apple-touch-icon.png" },
+  appleWebApp: { capable: true, title: "Cometrix", statusBarStyle: "default" },
+};
+
+// 端末の上の帯の色。ヘッダーの地（--surface）と同じ。
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: APP_COLORS.light.surface },
+    { media: "(prefers-color-scheme: dark)", color: APP_COLORS.dark.surface },
+  ],
+};
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
