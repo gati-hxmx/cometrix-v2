@@ -5,6 +5,7 @@
 1. Claude の PR（claude/ ブランチ）で、レビューや次の工程が30分以上動いていないもの
    - Codex のレビューが始まっていない → 人のトークン（CODEX_REQUEST_TOKEN）で `@codex review` を頼み直す。
      Codex は bot のコメントには反応しないため。2回頼んでも始まらなければ Claude が代わりにレビューする。
+     Codex が「利用上限」と返事をしていれば、頼み直さずにすぐ Claude が代わりにレビューする。
    - レビューは終わったのに止まっている → Claude に address か merge-gate で進めてもらう（2回まで）
    - それでも動かなければ Discord に1回だけ知らせる
 2. エラーで終わった Agent の実行 → 30分おいて1回だけ再実行する
@@ -30,6 +31,8 @@ RERUN_WINDOW = timedelta(hours=24)
 WATCH_INTERVAL = timedelta(minutes=15)  # watchdog.yml の間隔。再実行も失敗した実行の通知は、この間に1回だけ
 MAX_NUDGES = 2
 SKIP_LABELS = {"needs-human", "blocked"}
+# Codex が利用上限に達したときの返事（例「You have reached your Codex usage limits」）。
+CODEX_LIMIT = re.compile(r"usage limit", re.IGNORECASE)
 MARKER = re.compile(r"<!-- watchdog:(\w[\w-]*) sha=([0-9a-f]+) -->")
 
 
@@ -51,6 +54,7 @@ class PrState:
     codex_running_at: datetime | None = None
     nudges: dict[str, int] = field(default_factory=dict)  # この head_sha での再開の回数（種類ごと）
     agent_running: bool = False
+    codex_limited: bool = False  # Codex が利用上限だと返事をした（頼み直しても動かない）
 
 
 def decide(pr: PrState, now: datetime, has_token: bool) -> str | None:
@@ -69,7 +73,8 @@ def decide(pr: PrState, now: datetime, has_token: bool) -> str | None:
     if pr.codex_done_at is None:
         if pr.codex_running_at and now - pr.codex_running_at < CODEX_RUNNING_LIMIT:
             return None
-        if has_token and pr.nudges.get("request-codex", 0) < MAX_NUDGES:
+        # 利用上限の返事が来ていれば、頼み直さずにすぐ Claude が代わりにレビューする。
+        if has_token and not pr.codex_limited and pr.nudges.get("request-codex", 0) < MAX_NUDGES:
             return "request-codex"
         if pr.nudges.get("claude-review", 0) < 1:
             return "claude-review"
@@ -132,6 +137,9 @@ def build_state(pr: dict, head_time: datetime, comments: list, reviews: list, re
                 state.nudges[kind] = state.nudges.get(kind, 0) + 1
         if is_login(c.get("user"), codex) and "codex-review-receipt" in body:
             done(at)
+        if (is_login(c.get("user"), codex) and at and at >= head_time
+                and CODEX_LIMIT.search(body)):
+            state.codex_limited = True
         if at and at > state.last_activity:
             state.last_activity = at
     for r in reviews:
