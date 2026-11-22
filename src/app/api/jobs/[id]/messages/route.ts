@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, type SQL, sql } from "drizzle-orm";
 import { getDb } from "../../../../../db/client";
 import { chatMessages, jobs } from "../../../../../db/schema";
 import {
@@ -22,6 +22,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const f = parseFilter(params);
   const around = parseIntParam(params.get("aroundSec"), 0);
   const limit = parseIntParam(params.get("limit"), DEFAULT_LIMIT);
+  const donationsParam = params.get("donations");
+  if (donationsParam !== null && donationsParam !== "1") return bad();
   if (!f.ok || around === null || limit === null || limit < 1 || limit > MAX_LIMIT) return bad();
 
   const db = getDb();
@@ -32,12 +34,15 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 
   const conds: SQL[] = [eq(chatMessages.jobId, id), sql`${chatMessages.offsetMs} >= 0`];
   conds.push(...filterConds(f.filter));
+  if (donationsParam === "1") conds.push(isNotNull(chatMessages.kind));
   // (job_id, offset_ms) の索引で読めるよう、前と後ろをそれぞれ limit 件までに絞ってから近い順に選ぶ。
   const cols = {
     id: chatMessages.id,
     offsetMs: chatMessages.offsetMs,
     author: chatMessages.author,
     body: chatMessages.body,
+    kind: chatMessages.kind,
+    amount: chatMessages.amount,
   };
   const at = around * 1000;
   const [before, after] = await Promise.all([

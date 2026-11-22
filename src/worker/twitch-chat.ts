@@ -16,7 +16,9 @@ export type FetchLike = typeof fetch;
 type CommentNode = {
   contentOffsetSeconds?: number;
   commenter?: { displayName?: string | null; login?: string | null } | null;
-  message?: { fragments?: { text?: string | null }[] | null } | null;
+  message?: {
+    fragments?: { text?: string | null; cheermote?: unknown }[] | null;
+  } | null;
 };
 type CommentsPage = {
   data?: {
@@ -35,7 +37,19 @@ export function toMessage(node: CommentNode): ChatMessage | null {
   if (typeof node.contentOffsetSeconds !== "number") return null;
   const author = node.commenter?.displayName || node.commenter?.login || "";
   const text = (node.message?.fragments ?? []).map((f) => f.text ?? "").join("");
-  return { offsetMs: Math.round(node.contentOffsetSeconds * 1000), author, text };
+  const m: ChatMessage = { offsetMs: Math.round(node.contentOffsetSeconds * 1000), author, text };
+  // ビッツ：cheermote のフラグメント（例 "Cheer100"）の末尾の数を合計する。
+  let bits = 0;
+  for (const f of node.message?.fragments ?? []) {
+    if (!f.cheermote) continue;
+    const n = /(\d+)\s*$/.exec(f.text ?? "");
+    if (n) bits += Number(n[1]);
+  }
+  if (bits > 0) {
+    m.kind = "bits";
+    m.amount = `${bits} bits`;
+  }
+  return m;
 }
 
 /** GraphQL の1ページ分の応答から、コメントと次のカーソルを取り出す。 */

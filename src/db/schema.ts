@@ -53,6 +53,9 @@ export const chatMessages = pgTable(
     offsetMs: integer("offset_ms").notNull(),
     author: text("author").notNull(),
     body: text("body").notNull(),
+    // 投げ銭のときだけ入る（スパチャ・ステッカー・メンバー加入・ビッツ）。amount は表示用の文字列。
+    kind: text("kind", { enum: ["paid", "sticker", "member", "bits"] }),
+    amount: text("amount"),
   },
   (t) => [index("chat_messages_job_offset_idx").on(t.jobId, t.offsetMs)],
 );

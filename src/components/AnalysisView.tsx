@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Bucket } from "../lib/chart";
 import { EMPTY_FILTER, filterParams, isFiltering } from "../lib/chat-filter";
+import type { Donation } from "../lib/donations";
 import { BucketChart } from "./BucketChart";
 import { ChatList, type Filter } from "./ChatList";
 import { MemoPanel } from "./MemoPanel";
@@ -73,6 +74,7 @@ export function AnalysisView({ id }: { id: string }) {
   const [filter, setFilter] = useState<Filter>(EMPTY_FILTER);
   const [tab, setTab] = useState<"chat" | "memo">("chat");
   const [filtered, setFiltered] = useState<Bucket[] | null>(null);
+  const [donations, setDonations] = useState<Donation[]>([]);
   const [series, setSeries] = useState<"all" | "laugh">("all");
   const laugh = series === "laugh";
   const onFilter = useCallback((f: Filter) => setFilter(f), []);
@@ -111,6 +113,19 @@ export function AnalysisView({ id }: { id: string }) {
       stale = true;
     };
   }, [filter, recount, laugh, isDone, id]);
+
+  // 投げ銭の印（#57）。読めなくても分析は使えるので、失敗は黙って印なしにする。
+  useEffect(() => {
+    if (!isDone) return;
+    let stale = false;
+    fetch(`/api/jobs/${id}/donations`, { cache: "no-store" })
+      .then((r) => (r.ok ? (r.json() as Promise<Donation[]>) : []))
+      .then((d) => !stale && setDonations(d))
+      .catch(() => {});
+    return () => {
+      stale = true;
+    };
+  }, [isDone, id]);
 
   useEffect(() => {
     let stopped = false;
@@ -284,6 +299,7 @@ export function AnalysisView({ id }: { id: string }) {
                   getTime={getTime}
                   filtered={filtering && filtered !== null}
                   laugh={laugh && filtered !== null}
+                  donations={donations}
                 />
               ) : (
                 <div
@@ -356,6 +372,7 @@ export function AnalysisView({ id }: { id: string }) {
                   onSeek={seek}
                   onFilter={onFilter}
                   onError={setToast}
+                  hasDonations={donations.length > 0}
                 />
               </div>
               <div

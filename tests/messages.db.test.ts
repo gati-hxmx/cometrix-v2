@@ -134,4 +134,43 @@ describe.skipIf(!url)("チャットの絞り込み API（Postgres）", () => {
     expect(rows.every((r) => r.count === 0)).toBe(true);
     expect((await get(buckets, id, `user=${"a".repeat(101)}`)).status).toBe(400);
   });
+
+  test("投げ銭: kind・amount を返し、donations=1 で投げ銭だけに絞る。不正な値は 400", async () => {
+    const id = await seed();
+    await db.insert(chatMessages).values({
+      jobId: id,
+      offsetMs: 50000,
+      author: "Donor",
+      body: "thanks",
+      kind: "paid",
+      amount: "¥500",
+    });
+    const rows = (await (await get(messages, id, "donations=1")).json()) as {
+      author: string;
+      kind: string;
+      amount: string;
+    }[];
+    expect(rows).toEqual([
+      expect.objectContaining({ author: "Donor", kind: "paid", amount: "¥500" }),
+    ]);
+    const all = (await (await get(messages, id)).json()) as { kind: string | null }[];
+    expect(all.filter((r) => r.kind === null)).toHaveLength(4);
+    expect((await get(messages, id, "donations=2")).status).toBe(400);
+    expect((await get(messages, id, "donations=0")).status).toBe(400);
+  });
+
+  test("donations API は投げ銭を時刻順で返す。未完了は 409、不明な ID は 404", async () => {
+    const { GET: donations } = await import("../src/app/api/jobs/[id]/donations/route");
+    const id = await seed();
+    await db.insert(chatMessages).values([
+      { jobId: id, offsetMs: 70000, author: "B", body: "", kind: "sticker" },
+      { jobId: id, offsetMs: 50000, author: "A", body: "x", kind: "paid", amount: "¥100" },
+      { jobId: id, offsetMs: -1000, author: "Early", body: "", kind: "paid" },
+    ]);
+    const rows = (await (await get(donations, id)).json()) as { author: string }[];
+    expect(rows.map((r) => r.author)).toEqual(["A", "B"]);
+    const running = await seed("running", "bbbbbbbbbbb");
+    expect((await get(donations, running)).status).toBe(409);
+    expect((await get(donations, "00000000-0000-4000-8000-000000000000")).status).toBe(404);
+  });
 });

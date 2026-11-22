@@ -78,6 +78,8 @@ export async function runJob(db: Db, job: ClaimedJob, fetchChat: ChatFetcher) {
             offsetMs: m.offsetMs,
             author: m.author,
             body: m.text,
+            kind: m.kind ?? null,
+            amount: m.amount ?? null,
           })),
         );
       }
