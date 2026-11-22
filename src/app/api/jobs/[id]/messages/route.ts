@@ -7,7 +7,7 @@ import {
   parseFilter,
   parseIntParam,
 } from "../../../../../lib/chat-filter";
-import { filterConds } from "../../../../../lib/chat-sql";
+import { FILTER_TIMEOUT_MS, filterConds, isBadPatternError } from "../../../../../lib/chat-sql";
 
 export const dynamic = "force-dynamic";
 
@@ -39,21 +39,34 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     author: chatMessages.author,
     body: chatMessages.body,
   };
+  type Row = { id: number; offsetMs: number; author: string; body: string };
   const at = around * 1000;
-  const [before, after] = await Promise.all([
-    db
-      .select(cols)
-      .from(chatMessages)
-      .where(and(...conds, sql`${chatMessages.offsetMs} <= ${at}`))
-      .orderBy(desc(chatMessages.offsetMs), desc(chatMessages.id))
-      .limit(limit),
-    db
-      .select(cols)
-      .from(chatMessages)
-      .where(and(...conds, sql`${chatMessages.offsetMs} > ${at}`))
-      .orderBy(asc(chatMessages.offsetMs), asc(chatMessages.id))
-      .limit(limit),
-  ]);
+  let both: Row[][];
+  try {
+    both = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select set_config('statement_timeout', ${String(FILTER_TIMEOUT_MS)}, true)`,
+      );
+      return Promise.all([
+        tx
+          .select(cols)
+          .from(chatMessages)
+          .where(and(...conds, sql`${chatMessages.offsetMs} <= ${at}`))
+          .orderBy(desc(chatMessages.offsetMs), desc(chatMessages.id))
+          .limit(limit),
+        tx
+          .select(cols)
+          .from(chatMessages)
+          .where(and(...conds, sql`${chatMessages.offsetMs} > ${at}`))
+          .orderBy(asc(chatMessages.offsetMs), asc(chatMessages.id))
+          .limit(limit),
+      ]);
+    });
+  } catch (e) {
+    if (isBadPatternError(e)) return bad();
+    throw e;
+  }
+  const [before, after] = both;
   const rows = [...before, ...after]
     .sort((a, b) => Math.abs(a.offsetMs - at) - Math.abs(b.offsetMs - at) || a.id - b.id)
     .slice(0, limit)

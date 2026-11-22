@@ -2,6 +2,7 @@
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { formatTime } from "../lib/chart";
 import { twitchTimeParam } from "../lib/twitch-time";
+import { ResumeButton } from "./ResumeButton";
 import type { PlayerHandle } from "./YoutubePlayer";
 
 type TwitchPlayerApi = {
@@ -152,8 +153,23 @@ export function TwitchPlayer({ videoId, ref }: { videoId: string; ref?: Ref<Play
             >
               {problem === "failed"
                 ? "⚠ 動画を読み込めませんでした。"
-                : "⚠ 自動再生が止められました。プレイヤーの再生ボタンを押してください。"}
+                : "⚠ 自動再生が止められました。下のボタンか、プレイヤーの再生ボタンを押してください。"}
             </p>
+            {problem === "blocked" && (
+              <div style={{ pointerEvents: "auto", maxWidth: "100%" }}>
+                <ResumeButton
+                  sec={lastSec}
+                  onPlay={() => {
+                    const p = player.current;
+                    if (p) {
+                      p.seek(lastSecRef.current);
+                      p.play();
+                    }
+                    setProblem(null);
+                  }}
+                />
+              </div>
+            )}
             <a
               href={openUrl}
               target="_blank"

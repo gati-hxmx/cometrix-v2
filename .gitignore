@@ -8,6 +8,9 @@ __pycache__/
 dist/
 build/
 coverage/
+e2e-screenshots/
+test-results/
+playwright-report/
 .next/
 tsconfig.tsbuildinfo
 next-env.d.ts
