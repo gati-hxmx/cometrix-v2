@@ -18,6 +18,7 @@ import { KeywordLines } from "./KeywordLines";
 import { MemoPanel } from "./MemoPanel";
 import { PlaybackBar } from "./PlaybackBar";
 import { ReanalyzeButton } from "./ReanalyzeButton";
+import { SavedFilters } from "./SavedFilters";
 import { Segmented } from "./Segmented";
 import { Toast } from "./Toast";
 import { TocPanel } from "./TocPanel";
@@ -173,6 +174,9 @@ export function AnalysisView({ id }: { id: string }) {
   const playerBox = useRef<HTMLDivElement>(null);
   const closeToast = useCallback(() => setToast(null), []);
   const [filter, setFilter] = useState<Filter>(EMPTY_FILTER);
+  // 保存した絞り込みの呼び出し（#67）
+  const [preset, setPreset] = useState<{ filter: Filter; n: number } | null>(null);
+  const [undoToast, setUndoToast] = useState<{ message: string; undo: () => void } | null>(null);
   const [tab, setTab] = useState<Tab>("chat");
   const [stampSignal, setStampSignal] = useState(0);
   // 今グラフに出している範囲（区間の番号）。画像の保存に使う（#69）。
@@ -705,6 +709,20 @@ export function AnalysisView({ id }: { id: string }) {
                   onSeek={seek}
                   onFilter={onFilter}
                   onError={setToast}
+                  preset={preset ?? undefined}
+                  top={
+                    <SavedFilters
+                      filter={filter}
+                      terms={terms}
+                      onApply={(s) => {
+                        setPreset((p) => ({ filter: s.filter, n: (p?.n ?? 0) + 1 }));
+                        setTerms(s.terms);
+                      }}
+                      onDone={setDoneToast}
+                      onUndoable={(message, undo) => setUndoToast({ message, undo })}
+                      onError={setToast}
+                    />
+                  }
                 />
               </div>
               <div
@@ -759,7 +777,18 @@ export function AnalysisView({ id }: { id: string }) {
         </div>
       )}
       <Toast message={toast} onClose={closeToast} />
-      {!toast && <Toast kind="done" message={doneToast} onClose={closeDoneToast} />}
+      {!toast && undoToast && (
+        <Toast
+          kind="done"
+          message={undoToast.message}
+          onUndo={() => {
+            undoToast.undo();
+            setUndoToast(null);
+          }}
+          onClose={() => setUndoToast(null)}
+        />
+      )}
+      {!toast && !undoToast && <Toast kind="done" message={doneToast} onClose={closeDoneToast} />}
     </main>
   );
 }

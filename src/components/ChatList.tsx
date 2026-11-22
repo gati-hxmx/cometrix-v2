@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { formatTime } from "../lib/chart";
 import {
   addRegex,
@@ -221,8 +221,14 @@ export function ChatList({
   onSeek,
   onFilter,
   onError,
+  preset,
+  top,
 }: {
   jobId: string;
+  /** 保存した絞り込みを呼び出したとき（n が増えるたびに入れ替える、#67） */
+  preset?: { filter: Filter; n: number };
+  /** 見出しの下、絞り込み欄の上に置くもの（保存した絞り込みのチップ） */
+  top?: ReactNode;
   getTime: () => number;
   onSeek: (sec: number) => void;
   onFilter: (f: Filter) => void;
@@ -247,6 +253,18 @@ export function ChatList({
   useEffect(() => {
     onFilter(applied);
   }, [applied, onFilter]);
+
+  const presetN = preset?.n ?? 0;
+  const presetRef = useRef(preset);
+  presetRef.current = preset;
+  useEffect(() => {
+    const p = presetRef.current;
+    if (presetN > 0 && p) {
+      setApplied(p.filter);
+      // 形の欄を使う絞り込みなら、形の欄を開いて見せる
+      if (p.filter.re.length > 0 || p.filter.xre.length > 0) setShowMore(true);
+    }
+  }, [presetN]);
 
   const load = useCallback(
     async (around: number) => {
@@ -323,6 +341,7 @@ export function ChatList({
   return (
     <section className="chat-list" aria-label="チャット">
       <h2 style={{ fontSize: 16, margin: "0 0 8px" }}>チャット</h2>
+      {top}
       <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
         {FIELDS.filter((fd) => !fd.regex || moreOpen).map((fd) => (
           <TermField
