@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Bucket } from "../lib/chart";
 import { EMPTY_FILTER, filterParams, isFiltering } from "../lib/chat-filter";
 import { cleanClips } from "../lib/clips";
+import { LEAD_DEFAULT, LEAD_KEY, type Lead, leadTarget, parseLead } from "../lib/lead";
 import { type FetchProgress, progressLabel, progressPercent } from "../lib/progress";
 import { BucketChart } from "./BucketChart";
 import { ChatList, type Filter } from "./ChatList";
@@ -293,6 +294,24 @@ export function AnalysisView({ id }: { id: string }) {
     }
   }, [id, router]);
 
+  // 棒を押したときだけ、山の少し前から再生する。選んだ値はブラウザに覚える。
+  const [lead, setLeadState] = useState<Lead>(LEAD_DEFAULT);
+  useEffect(() => {
+    try {
+      setLeadState(parseLead(localStorage.getItem(LEAD_KEY)));
+    } catch {
+      // 保存が使えなくても初期値で動く
+    }
+  }, []);
+  const setLead = useCallback((v: Lead) => {
+    setLeadState(v);
+    try {
+      localStorage.setItem(LEAD_KEY, String(v));
+    } catch {
+      // 保存できなくても、その場の選択は効く
+    }
+  }, []);
+
   const seek = useCallback((sec: number) => {
     player.current?.seek(sec);
     const box = playerBox.current;
@@ -302,6 +321,8 @@ export function AnalysisView({ id }: { id: string }) {
         box.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, []);
+
+  const seekPeak = useCallback((sec: number) => seek(leadTarget(sec, lead)), [seek, lead]);
 
   if (state.kind === "notfound") {
     return (
@@ -369,7 +390,7 @@ export function AnalysisView({ id }: { id: string }) {
           </div>
           <section style={{ ...card, marginTop: 16 }}>
             <h2 style={{ fontSize: 16, margin: "0 0 8px" }}>コメント数（30秒ごと）</h2>
-            <BucketChart buckets={[]} onSeek={seek} />
+            <BucketChart buckets={[]} onSeek={seekPeak} />
           </section>
         </>
       )}
@@ -467,7 +488,7 @@ export function AnalysisView({ id }: { id: string }) {
                 <BucketChart
                   key={id}
                   buckets={recount && filtered ? filtered : state.buckets}
-                  onSeek={seek}
+                  onSeek={seekPeak}
                   getTime={getTime}
                   filtered={filtering && filtered !== null}
                   laugh={laugh && filtered !== null}
@@ -496,6 +517,8 @@ export function AnalysisView({ id }: { id: string }) {
                 bucketCount={state.kind === "job" && state.buckets ? state.buckets.length : 0}
                 getTime={getTime}
                 onSeek={seek}
+                lead={lead}
+                onLead={setLead}
                 enabled
               />
             )}
@@ -577,7 +600,7 @@ export function AnalysisView({ id }: { id: string }) {
                   buckets={recount ? filtered : state.kind === "job" ? state.buckets : null}
                   laugh={laugh}
                   getTime={getTime}
-                  onSeek={seek}
+                  onSeek={seekPeak}
                 />
               </div>
               <div
