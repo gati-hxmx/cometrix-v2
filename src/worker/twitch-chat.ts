@@ -177,7 +177,12 @@ export async function fetchTwitchLength(
 }
 
 export const fetchWithTwitch: ChatFetcher = async (videoId, _url, _platform, onProgress) => {
-  const durationSec = onProgress ? await fetchTwitchLength(videoId) : null;
+  // 長さは取得と並べて取り、分かった時点から ％ に使う。
+  let durationSec: number | null = null;
+  if (onProgress)
+    void fetchTwitchLength(videoId).then((n) => {
+      durationSec = n;
+    });
   const report = (fetchedSec: number) =>
     onProgress?.({ stage: "fetching", fetchedSec, durationSec } satisfies FetchProgress);
   const [messages, title] = await Promise.all([

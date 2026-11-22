@@ -63,6 +63,7 @@ export function progressWriter(db: Db, job: ClaimedJob, minIntervalMs = PROGRESS
   let last = 0;
   let inflight: Promise<unknown> = Promise.resolve();
   let busy = false;
+  let closed = false;
   const write = (p: FetchProgress) => {
     busy = true;
     inflight = db
@@ -78,16 +79,20 @@ export function progressWriter(db: Db, job: ClaimedJob, minIntervalMs = PROGRESS
   return {
     report(p: FetchProgress) {
       const now = Date.now();
-      if (busy || now - last < minIntervalMs) return;
+      if (closed || busy || now - last < minIntervalMs) return;
       last = now;
       void write(p);
     },
     /** 書きかけを待ってから、最後の状態を書く。 */
     async flush(p: FetchProgress) {
+      closed = true;
       await inflight;
       await write(p);
     },
-    settle: () => inflight,
+    settle: () => {
+      closed = true;
+      return inflight;
+    },
   };
 }
 

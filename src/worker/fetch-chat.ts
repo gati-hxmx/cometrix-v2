@@ -90,7 +90,9 @@ export const fetchWithYtDlp: ChatFetcher = async (_videoId, url, _platform, onPr
         });
         timer = setInterval(async () => {
           const sec = lastOffsetSec(await readTail(`${out}.part`));
-          if (sec !== null) onProgress({ stage: "fetching", fetchedSec: sec, durationSec });
+          // 読んでいるあいだに取得が終わっていたら知らせない（保存中の表示を戻さない）。
+          if (sec !== null && child.exitCode === null && child.signalCode === null)
+            onProgress({ stage: "fetching", fetchedSec: sec, durationSec });
         }, PROGRESS_MS);
       });
     } catch (e) {
