@@ -16,6 +16,8 @@ import {
 import type { Clip } from "../lib/clips";
 
 const MAX_BARS = 120;
+/** キー操作の案内（#66）。J L の秒数はグラフの下の「‹ N 秒 ›」と同じ。 */
+const KEY_HINT = ["← → 前後の山", "スペース 再生／停止", "J L 戻る／進む", "M メモに時刻"];
 const HEIGHT = 140;
 const AXIS_LEFT = 36;
 const AXIS_BOTTOM = 22;
@@ -769,6 +771,7 @@ export function BucketChart({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          flexWrap: "wrap",
           gap: 8,
           minHeight: zoomed ? 44 : undefined,
           fontSize: 12,
@@ -778,8 +781,14 @@ export function BucketChart({
         <span>Ctrl＋ホイール・2本指で拡大、拡大中はドラッグで移動</span>
         {/* キー操作（#66）はキーボードのある PC だけに、一度使うまで案内する（部品 4-8） */}
         {keyHint && (
-          <span className="key-hint">
-            ← → 前後の山・スペース 再生／停止・J L 10秒・M メモに時刻
+          // 狭いときは区切りの所でだけ折る（言葉の途中で折らない）
+          <span className="key-hint" style={{ flexBasis: "100%", order: 2 }}>
+            {KEY_HINT.map((t, i) => (
+              <span key={t} style={{ whiteSpace: "nowrap" }}>
+                {i > 0 && "・"}
+                {t}
+              </span>
+            ))}
           </span>
         )}
         {zoomed && (

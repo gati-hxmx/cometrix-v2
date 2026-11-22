@@ -5,8 +5,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Bucket } from "../lib/chart";
 import { EMPTY_FILTER, filterParams, isFiltering } from "../lib/chat-filter";
 import { cleanClips } from "../lib/clips";
-import { keyAction, SKIP_SEC, stepPeak } from "../lib/keys";
+import { keyAction, stepPeak } from "../lib/keys";
 import { LEAD_DEFAULT, LEAD_KEY, type Lead, leadTarget, parseLead } from "../lib/lead";
+import { STEP_DEFAULT, seekTarget } from "../lib/playback";
 import { type FetchProgress, progressLabel, progressPercent } from "../lib/progress";
 import { pickPeaks } from "../lib/toc";
 import { BucketChart } from "./BucketChart";
@@ -356,20 +357,26 @@ export function AnalysisView({ id }: { id: string }) {
 
   // キー操作（#66）。前後の山は、今グラフに出している数の目次の山を、少し前から再生する設定（lead）込みでたどる。
   const shown = recount ? filtered : state.kind === "job" ? state.buckets : null;
-  const keyState = useRef({ shown, lead, isDone, seek });
-  keyState.current = { shown, lead, isDone, seek };
+  // J / L は「‹ N 秒 ›」と同じ秒数で動く（PlaybackBar から受け取る）
+  const [stepSec, setStepSec] = useState(STEP_DEFAULT);
+  const keyState = useRef({ shown, lead, isDone, seek, stepSec });
+  keyState.current = { shown, lead, isDone, seek, stepSec };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const k = keyState.current;
       if (!k.isDone || e.defaultPrevented) return;
-      const el = e.target instanceof HTMLElement ? e.target : null;
+      const el = e.target instanceof Element ? e.target : null;
       const action = keyAction(e, {
         tagName: el?.tagName,
-        isContentEditable: el?.isContentEditable,
+        isContentEditable: el instanceof HTMLElement && el.isContentEditable,
         role: el?.getAttribute("role"),
         inChart: el?.closest("[data-chart-plot]") != null,
       });
       if (!action) return;
+      if (action === "hold") {
+        e.preventDefault();
+        return;
+      }
       const p = player.current;
       if (!p) return;
       e.preventDefault();
@@ -379,8 +386,8 @@ export function AnalysisView({ id }: { id: string }) {
       } catch {}
       const now = p.getTime();
       if (action === "toggle") p.togglePlay();
-      else if (action === "back") k.seek(Math.max(0, now - SKIP_SEC));
-      else if (action === "forward") k.seek(now + SKIP_SEC);
+      else if (action === "back") k.seek(seekTarget(now, -k.stepSec));
+      else if (action === "forward") k.seek(seekTarget(now, k.stepSec));
       else if (action === "stamp") {
         setTab("memo");
         setStampSignal((n) => n + 1);
@@ -620,6 +627,7 @@ export function AnalysisView({ id }: { id: string }) {
                 onSeek={seek}
                 lead={lead}
                 onLead={setLead}
+                onStep={setStepSec}
                 enabled
               />
             )}

@@ -42,10 +42,19 @@ describe("キーを操作にする", () => {
   });
 
   test("押しっぱなしのスペース・M はくり返さない", () => {
-    expect(keyAction({ key: " ", repeat: true }, body)).toBeNull();
+    // 押しっぱなしのスペースは何もしないが、ページが動かないよう受け止める
+    expect(keyAction({ key: " ", repeat: true }, body)).toBe("hold");
+    expect(keyAction({ key: "Spacebar" }, body)).toBe("toggle");
     expect(keyAction({ key: "m", repeat: true }, body)).toBeNull();
     expect(keyAction({ key: "ArrowRight", repeat: true }, body)).toBe("next");
   });
+});
+
+test("変換中・メニューの項目・リンクの上では使わない", () => {
+  expect(keyAction({ key: "m", isComposing: true }, { tagName: "DIV" })).toBeNull();
+  for (const role of ["menuitemcheckbox", "menuitemradio"])
+    expect(keyAction({ key: "ArrowRight" }, { tagName: "DIV", role })).toBeNull();
+  expect(keyAction({ key: " " }, { tagName: "SPAN", role: "link" })).toBeNull();
 });
 
 describe("前後の山", () => {
@@ -59,5 +68,12 @@ describe("前後の山", () => {
     expect(stepPeak(peaks, 700, -1)).toBe(600);
     expect(stepPeak(peaks, 601, -1)).toBe(60);
     expect(stepPeak(peaks, 30, -1)).toBeNull();
+  });
+
+  test("山がない・同じ時刻の山が重なるときも動ける", () => {
+    expect(stepPeak([], 100, 1)).toBeNull();
+    expect(stepPeak([], 100, -1)).toBeNull();
+    expect(stepPeak([0, 0, 300], 0, 1)).toBe(300);
+    expect(stepPeak([0, 0, 300], 300, -1)).toBe(0);
   });
 });

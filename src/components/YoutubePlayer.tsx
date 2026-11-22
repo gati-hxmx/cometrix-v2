@@ -72,7 +72,9 @@ export function YoutubePlayer({ videoId, ref }: { videoId: string; ref?: Ref<Pla
       const p = player.current;
       if (!p) return;
       try {
-        if (p.getPlayerState() === 1) p.pauseVideo();
+        // 1 再生中・3 読み込み中（前後へ動いた直後）はどちらも止める
+        const st = p.getPlayerState();
+        if (st === 1 || st === 3) p.pauseVideo();
         else p.playVideo();
       } catch {
         // 準備ができていないときは何もしない

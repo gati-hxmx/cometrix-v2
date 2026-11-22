@@ -1,9 +1,9 @@
 // 分析画面のキー操作（#66）。PC でたくさん見る人の手間を減らす。
 // ← → 前後の山、スペース 再生・停止、J / L 10秒戻る・進む、M メモに今の時刻。
 
-export type KeyAction = "prev" | "next" | "toggle" | "back" | "forward" | "stamp";
-
-export const SKIP_SEC = 10;
+// J / L の秒数は、グラフの下の「‹ N 秒 ›」と同じ（設定は1か所）。
+/** hold：押しっぱなしのスペース。何もしないが、ページが下へ動かないようにだけする。 */
+export type KeyAction = "prev" | "next" | "toggle" | "back" | "forward" | "stamp" | "hold";
 
 /** キーを押した場所。文字を打っている所・押せる物の上では、ふだんの動きを邪魔しない。 */
 export type KeyTarget = {
@@ -20,6 +20,8 @@ export type KeyInput = {
   metaKey?: boolean;
   altKey?: boolean;
   repeat?: boolean;
+  /** 日本語の変換中 */
+  isComposing?: boolean;
 };
 
 const TYPING = new Set(["INPUT", "TEXTAREA", "SELECT"]);
@@ -36,10 +38,10 @@ const PRESSABLE_ROLES = new Set([
 
 /** 押されたキーを操作にする。分析画面の操作でなければ null（ブラウザのふだんの動きのまま）。 */
 export function keyAction(e: KeyInput, t: KeyTarget): KeyAction | null {
-  if (e.ctrlKey || e.metaKey || e.altKey) return null;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return null;
   if (t.isContentEditable || (t.tagName && TYPING.has(t.tagName))) return null;
   // 開いたメニューの中では、キーはメニューの操作に使う（書き出しの ⋮、#59）
-  if (t.role === "menuitem") return null;
+  if (t.role?.startsWith("menuitem")) return null;
   const onPressable =
     (t.tagName !== undefined && PRESSABLE.has(t.tagName)) ||
     (t.role != null && PRESSABLE_ROLES.has(t.role));
@@ -52,8 +54,8 @@ export function keyAction(e: KeyInput, t: KeyTarget): KeyAction | null {
     case " ":
     case "Spacebar":
       // ボタンの上のスペースはボタンを押す動き
-      if (onPressable || e.repeat) return null;
-      return "toggle";
+      if (onPressable) return null;
+      return e.repeat ? "hold" : "toggle";
     case "j":
     case "J":
       return "back";
@@ -70,7 +72,7 @@ export function keyAction(e: KeyInput, t: KeyTarget): KeyAction | null {
 
 /**
  * 次・前の山の時刻。peaks は山の開始秒（並びは問わない）。
- * 前へは、今いる山の頭から少し（3秒）過ぎていれば同じ山の頭へ戻らず1つ前へ行く。なければ null。
+ * 前へは、今いる山の頭から3秒より過ぎていればその山の頭へ戻り、3秒以内なら1つ前の山へ行く。なければ null。
  */
 export function stepPeak(peaks: number[], now: number, dir: 1 | -1): number | null {
   const sorted = [...peaks].sort((a, b) => a - b);
