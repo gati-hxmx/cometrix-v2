@@ -509,7 +509,8 @@ export function AnalysisView({ id }: { id: string }) {
                       )}
                       unit={users ? "人" : "件"}
                       graph={
-                        chartBuckets && chartBuckets.length > 0
+                        // 数が全部 0 のときはグラフも出ないので、保存もできない
+                        chartBuckets?.some((b) => b.count > 0)
                           ? {
                               heading: chartHeading,
                               buckets: chartRange

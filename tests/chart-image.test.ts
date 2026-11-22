@@ -1,5 +1,13 @@
 import { describe, expect, test } from "vitest";
-import { chartLayout, drawChart, fitText, IMAGE_H, IMAGE_W } from "../src/lib/chart-image";
+import {
+  chartLayout,
+  drawChart,
+  fitText,
+  headingFor,
+  IMAGE_H,
+  IMAGE_W,
+  intervalLabel,
+} from "../src/lib/chart-image";
 
 // グラフの画像（#69）。今見ている範囲だけを、タイトル・目盛りつきで描く。
 const buckets = (n: number, from = 0) =>
@@ -86,4 +94,35 @@ test("背景・タイトル・見出し・棒・目盛りを描く", () => {
   expect(texts).toContain("配信");
   expect(texts).toContain("コメント数（30秒ごと）・0:00:00〜0:05:00");
   expect(texts).toContain("Cometrix");
+});
+
+describe("棒1本の長さ", () => {
+  test("まとめた棒は見出しを「5分ごと」などに直す", () => {
+    const many = Array.from({ length: 1200 }, (_, i) => ({ startSec: i * 30, count: 1 }));
+    const l = chartLayout(img(many));
+    expect(l.barSec).toBe(300);
+    expect(headingFor("コメント数（30秒ごと）", l.barSec)).toBe("コメント数（5分ごと）");
+    expect(chartLayout(img()).barSec).toBe(30);
+  });
+
+  test("長さの書き方", () => {
+    expect(intervalLabel(30)).toBe("30秒");
+    expect(intervalLabel(150)).toBe("2分30秒");
+    expect(intervalLabel(3600)).toBe("1時間");
+    expect(headingFor("コメント数", 60)).toBe("コメント数（1分ごと）");
+  });
+});
+
+describe("少ない・空のとき", () => {
+  test("数が全部 0 でも描け、山の印は付けない", () => {
+    const l = chartLayout(img(buckets(5).map((b) => ({ ...b, count: 0 }))));
+    expect(l.bars.every((b) => !b.peak && b.h === 0)).toBe(true);
+    expect(l.yTicks.map((t) => t.label)).toEqual(["0", "1"]);
+  });
+
+  test("区間が1つなら棒1本で、範囲は30秒", () => {
+    const l = chartLayout(img(buckets(1)));
+    expect(l.bars).toHaveLength(1);
+    expect(l.span).toBe("0:00:00〜0:00:30");
+  });
 });

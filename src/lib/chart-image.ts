@@ -43,12 +43,31 @@ export type ChartLayout = {
   xTicks: { label: string; x: number }[];
   /** 「0:00:00〜10:00:00」 */
   span: string;
+  /** 棒1本の長さ（秒）。長い配信では区間をまとめるので 30秒より長くなる */
+  barSec: number;
 };
+
+/** 棒1本の長さを「30秒」「5分」「2分30秒」「1時間」の形にする。 */
+export function intervalLabel(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.round(sec % 60);
+  return `${h ? `${h}時間` : ""}${m ? `${m}分` : ""}${s || sec === 0 ? `${s}秒` : ""}`;
+}
+
+/** 見出しの「（30秒ごと）」を、画像の棒1本の長さに直す（まとめた棒に 30秒あたりの数と読まれないように）。 */
+export function headingFor(heading: string, barSec: number): string {
+  const label = `（${intervalLabel(barSec)}ごと）`;
+  return /（[^（）]*ごと）$/.test(heading)
+    ? heading.replace(/（[^（）]*ごと）$/, label)
+    : `${heading}${label}`;
+}
 
 /** 描く位置を決める（描くこととは分け、テストで確かめられるようにする）。 */
 export function chartLayout(img: ChartImage, w = IMAGE_W, h = IMAGE_H): ChartLayout {
   const plot: Box = { x: PAD + 56, y: PAD + 124, w: w - PAD * 2 - 56, h: h - PAD * 2 - 124 - 40 };
   const grouped = groupBuckets(img.buckets, BARS, img.combine);
+  const group = grouped.length > 0 ? Math.ceil(img.buckets.length / grouped.length) : 1;
   const ticks = valueTicks(Math.max(1, ...grouped.map((b) => b.count)));
   const top = ticks.at(-1) ?? 1;
   const peak = peakIndex(grouped);
@@ -78,6 +97,7 @@ export function chartLayout(img: ChartImage, w = IMAGE_W, h = IMAGE_H): ChartLay
       .filter((t) => t < toSec)
       .map((t) => ({ label: formatTime(t), x: xOf(t) })),
     span: `${formatTime(fromSec)}〜${formatTime(toSec)}`,
+    barSec: group * img.bucketSec,
   };
 }
 
@@ -122,7 +142,7 @@ export function drawChart(ctx: Ctx, img: ChartImage, p: Palette, w = IMAGE_W, h 
   );
   ctx.font = `400 20px ${p.font}`;
   ctx.fillStyle = p.muted;
-  ctx.fillText(`${img.heading}・${l.span}`, PAD, PAD + 66);
+  ctx.fillText(`${headingFor(img.heading, l.barSec)}・${l.span}`, PAD, PAD + 66);
 
   // 横の目盛り線と数
   ctx.strokeStyle = p.line;

@@ -265,6 +265,7 @@ const row = {
   alignItems: "center",
   gap: 12,
   width: "100%",
+  boxSizing: "border-box",
   minHeight: 48,
   padding: "8px 12px",
   font: "inherit",
