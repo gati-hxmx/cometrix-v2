@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Bucket } from "../lib/chart";
 import { EMPTY_FILTER, filterParams, isFiltering } from "../lib/chat-filter";
 import { cleanClips } from "../lib/clips";
+import { type FetchProgress, progressLabel, progressPercent } from "../lib/progress";
 import { BucketChart } from "./BucketChart";
 import { ChatList, type Filter } from "./ChatList";
 import { MemoPanel } from "./MemoPanel";
@@ -20,6 +21,7 @@ type Job = {
   videoId?: string | null;
   result?: { videoId: string; title: string; totalComments: number; clips?: unknown } | null;
   error?: { code: string; message: string } | null;
+  progress?: FetchProgress | null;
 };
 type State =
   | { kind: "loading" }
@@ -61,6 +63,66 @@ function Player({
     <TwitchPlayer ref={ref} videoId={videoId} />
   ) : (
     <YoutubePlayer ref={ref} videoId={videoId} />
+  );
+}
+
+/** 取得中の進み具合（#43）。長さが分からないときはバーを出さず、取得済みの時刻だけ出す。 */
+function FetchProgressBar({ progress }: { progress: FetchProgress }) {
+  const pct = progressPercent(progress);
+  return (
+    <div style={{ marginTop: 12 }}>
+      {pct !== null && (
+        <div
+          role="progressbar"
+          aria-label="チャットの取得"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={pct}
+          style={{
+            height: 8,
+            background: "var(--surface-2)",
+            borderRadius: 999,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              width: `${pct}%`,
+              height: "100%",
+              background: "var(--accent)",
+              borderRadius: 999,
+              transition: "width 0.4s ease",
+            }}
+          />
+        </div>
+      )}
+      <p
+        style={{
+          margin: "6px 0 0",
+          fontSize: 13,
+          color: "var(--accent-dark)",
+          fontWeight: 700,
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {progressLabel(progress)}
+      </p>
+      {/* 数字は2〜3秒ごとに変わるので読み上げず、段階が変わったときだけ知らせる。 */}
+      <span
+        aria-live="polite"
+        style={{
+          position: "absolute",
+          width: 1,
+          height: 1,
+          overflow: "hidden",
+          clip: "rect(0 0 0 0)",
+        }}
+      >
+        {progress.stage === "saving"
+          ? "取得が終わりました。集計して保存しています"
+          : "チャットを取得しています"}
+      </span>
+    </div>
   );
 }
 
@@ -225,8 +287,11 @@ export function AnalysisView({ id }: { id: string }) {
               <p style={{ margin: 0, color: "var(--muted)" }}>
                 {done?.result
                   ? `コメント ${done.result.totalComments.toLocaleString("ja-JP")} 件`
-                  : "チャットを取得して集計しています。数分かかることがあります。"}
+                  : job?.status === "queued"
+                    ? "順番を待っています。前の分析が終わると始まります。"
+                    : "チャットを取得して集計しています。長い配信では数分かかります。"}
               </p>
+              {waiting && job?.progress && <FetchProgressBar progress={job.progress} />}
             </section>
 
             <div ref={playerBox} style={{ marginTop: 16, scrollMarginTop: 8 }}>
