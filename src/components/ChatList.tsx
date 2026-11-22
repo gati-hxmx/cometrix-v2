@@ -32,8 +32,8 @@ const FIELDS: {
   { key: "xq", label: "除外するワード", exclude: true },
   { key: "user", label: "含めるユーザー", exclude: false },
   { key: "xuser", label: "除外するユーザー", exclude: true },
-  { key: "re", label: "含める正規表現", exclude: false, regex: true },
-  { key: "xre", label: "除外する正規表現", exclude: true, regex: true },
+  { key: "re", label: "含める形（正規表現）", exclude: false, regex: true },
+  { key: "xre", label: "除外する形（正規表現）", exclude: true, regex: true },
 ];
 
 /** 正規表現を打たなくても入れられる、よく使う形（押すと入力欄に入る。追加するまで反映しない）。 */
@@ -229,6 +229,7 @@ export function ChatList({
   onError: (message: string) => void;
 }) {
   const [applied, setApplied] = useState<Filter>(EMPTY_FILTER);
+  const [showMore, setShowMore] = useState(false);
   const [msgs, setMsgs] = useState<Msg[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [now, setNow] = useState(0);
@@ -316,12 +317,14 @@ export function ChatList({
   }, [follow, activeId]);
 
   const filtering = isFiltering(applied);
+  const usingRegex = applied.re.length > 0 || applied.xre.length > 0;
+  const moreOpen = showMore || usingRegex;
 
   return (
     <section className="chat-list" aria-label="チャット">
       <h2 style={{ fontSize: 16, margin: "0 0 8px" }}>チャット</h2>
       <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
-        {FIELDS.map((fd) => (
+        {FIELDS.filter((fd) => !fd.regex || moreOpen).map((fd) => (
           <TermField
             key={fd.key}
             label={fd.label}
@@ -331,6 +334,26 @@ export function ChatList({
             onChange={(list) => setApplied((cur) => ({ ...cur, [fd.key]: list }))}
           />
         ))}
+        {/* 形（正規表現）の欄は使う人が限られるので、ふだんは閉じておく（18項目の1・3）。使っている間は閉じない。 */}
+        {!usingRegex && (
+          <button
+            type="button"
+            aria-expanded={moreOpen}
+            onClick={() => setShowMore((v) => !v)}
+            style={{
+              justifySelf: "start",
+              minHeight: 44,
+              padding: "0 12px",
+              border: "1px solid var(--line)",
+              borderRadius: 6,
+              background: "var(--surface)",
+              color: "var(--text)",
+              cursor: "pointer",
+            }}
+          >
+            {moreOpen ? "▾" : "›"} 形で絞り込む（数字だけ・URL など）
+          </button>
+        )}
         {filtering && (
           <button
             type="button"
