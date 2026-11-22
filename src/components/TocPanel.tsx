@@ -7,12 +7,15 @@ import { nearestIndex, pickPeaks } from "../lib/toc";
 export function TocPanel({
   buckets,
   laugh,
+  users = false,
   getTime,
   onSeek,
 }: {
   /** null は読み込み中 */
   buckets: Bucket[] | null;
   laugh: boolean;
+  /** 人数（#55）のときは単位を「人」にする。 */
+  users?: boolean;
   getTime: () => number;
   onSeek: (sec: number) => void;
 }) {
@@ -67,7 +70,7 @@ export function TocPanel({
             </span>
             <span style={{ marginLeft: "auto" }}>
               {laugh ? "笑い " : ""}
-              {e.count.toLocaleString("ja-JP")} 件
+              {e.count.toLocaleString("ja-JP")} {users ? "人" : "件"}
             </span>
           </button>
         </li>

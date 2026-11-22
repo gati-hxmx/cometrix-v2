@@ -50,6 +50,7 @@ export function BucketChart({
   getTime,
   filtered = false,
   laugh = false,
+  users = false,
   pickRange = false,
   onPickRange,
   mark = null,
@@ -64,6 +65,8 @@ export function BucketChart({
   filtered?: boolean;
   /** 笑いのコメントだけの数（#41）。棒を2番目の系列色にし、文言を「笑い」にする。 */
   laugh?: boolean;
+  /** コメントした人の数（#55）。文言の単位を「人」にする。 */
+  users?: boolean;
   /** 範囲をなぞって選ぶ（#58）。入れている間、グラフの上のなぞりは範囲の選択になる。 */
   pickRange?: boolean;
   /** なぞり終えたときの始点・終点（秒、小さい順・1秒単位）。 */
@@ -106,7 +109,7 @@ export function BucketChart({
   const range = snapRange(exact, total);
   const zoomed = range.end - range.start < total;
   const view = buckets.slice(range.start, range.end);
-  const bars = groupBuckets(view, MAX_BARS);
+  const bars = groupBuckets(view, MAX_BARS, users ? "max" : "sum");
   const group = Math.max(1, Math.ceil(view.length / MAX_BARS));
   const peak = peakIndex(bars);
   const top = valueTicks(Math.max(1, ...bars.map((b) => b.count))).at(-1) ?? 1;
@@ -339,8 +342,17 @@ export function BucketChart({
 
   const ticks = timeTicks(fromSec, toSec, maxTickCount(plotWidth));
   const yTicks = valueTicks(Math.max(1, ...bars.map((b) => b.count)));
+  const unit = users ? "人" : "件";
   const countText = (n: number) =>
-    laugh ? `笑い ${n} 件` : filtered ? `一致 ${n} 件` : `${n} コメント`;
+    users
+      ? bars.length < view.length
+        ? `30秒あたり最多 ${n} 人`
+        : `${n} 人`
+      : laugh
+        ? `笑い ${n} 件`
+        : filtered
+          ? `一致 ${n} 件`
+          : `${n} コメント`;
   const termText = (i: number) =>
     lines
       .map((l, k) => `「${l.term}」${(lineBars[k][i]?.count ?? 0).toLocaleString("ja-JP")} 件`)
@@ -410,7 +422,7 @@ export function BucketChart({
             whiteSpace: "nowrap",
           }}
         >
-          件
+          {unit}
         </span>
         {yTicks.map((v) => (
           <div
@@ -707,7 +719,7 @@ export function BucketChart({
               zIndex: 2,
             }}
           >
-            {formatTime(bars[hover].startSec)} ・ {bars[hover].count.toLocaleString("ja-JP")} 件
+            {formatTime(bars[hover].startSec)} ・ {bars[hover].count.toLocaleString("ja-JP")} {unit}
             {lines.length > 0 && ` ・ ${termText(hover)}`}
           </div>
         )}
