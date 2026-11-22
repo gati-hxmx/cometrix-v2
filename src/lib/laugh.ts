@@ -23,9 +23,13 @@ export const LAUGH_PATTERN = [
   "rolling.on.the.floor.laughing",
 ].join("|");
 
+/** 前後から除く空白：半角スペース・タブ・改行・全角スペース。DB の btrim にも同じ文字を渡す。 */
+export const LAUGH_TRIM = " \t\r\n\u3000";
+
 const re = new RegExp(LAUGH_PATTERN, "i");
+const edges = /^[ \t\r\n\u3000]+|[ \t\r\n\u3000]+$/g;
 
 /** コメントが笑いか。1つのコメントに何回あっても1件と数えるので真偽だけを返す。 */
 export function isLaugh(text: string): boolean {
-  return re.test(text.trim());
+  return re.test(text.replace(edges, ""));
 }

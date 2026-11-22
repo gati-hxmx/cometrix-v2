@@ -22,6 +22,8 @@ export function Segmented<K extends string>({
       aria-label={label}
       style={{
         margin: 0,
+        // 折り返しても右端に寄せる（基本 4）。
+        marginLeft: "auto",
         padding: 0,
         minWidth: 0,
         display: "inline-flex",

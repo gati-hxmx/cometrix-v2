@@ -1,7 +1,7 @@
 import { type SQL, sql } from "drizzle-orm";
 import { chatMessages } from "../db/schema";
 import type { Filter } from "./chat-filter";
-import { LAUGH_PATTERN } from "./laugh";
+import { LAUGH_PATTERN, LAUGH_TRIM } from "./laugh";
 
 /** 絞り込みを SQL の条件にする（matches と同じ規則。語はパラメータとして渡す）。 */
 export function filterConds(f: Filter): SQL[] {
@@ -18,7 +18,7 @@ export function filterConds(f: Filter): SQL[] {
   return conds;
 }
 
-/** 笑いのコメントだけにする条件（isLaugh と同じ規則。前後の空白を除いてから見る）。 */
+/** 笑いのコメントだけにする条件（isLaugh と同じ規則。前後の空白・改行・全角スペースを除いてから見る）。 */
 export function laughCond(): SQL {
-  return sql`btrim(${chatMessages.body}) ~* ${LAUGH_PATTERN}`;
+  return sql`btrim(${chatMessages.body}, ${LAUGH_TRIM}) ~* ${LAUGH_PATTERN}`;
 }

@@ -255,7 +255,7 @@ export function AnalysisView({ id }: { id: string }) {
                 }}
               >
                 <h2 style={{ fontSize: 16, margin: 0 }}>
-                  {laugh ? "笑いの数（30秒ごと）" : "コメント数（30秒ごと）"}
+                  {laugh && filtered !== null ? "笑いの数（30秒ごと）" : "コメント数（30秒ごと）"}
                 </h2>
                 {done?.result && (
                   <Segmented
