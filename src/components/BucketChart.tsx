@@ -18,6 +18,7 @@ const HEIGHT = 140;
 const AXIS_LEFT = 36;
 const AXIS_BOTTOM = 22;
 const AXIS_RIGHT = 16;
+const AXIS_RIGHT_LINES = 36;
 const DRAG_THRESHOLD = 4;
 
 const stepButton = {
@@ -48,6 +49,7 @@ export function BucketChart({
   getTime,
   filtered = false,
   laugh = false,
+  lines = [],
 }: {
   buckets: Bucket[];
   onSeek: (sec: number) => void;
@@ -57,6 +59,8 @@ export function BucketChart({
   filtered?: boolean;
   /** 笑いのコメントだけの数（#41）。棒を2番目の系列色にし、文言を「笑い」にする。 */
   laugh?: boolean;
+  /** 重ねる言葉の線（#53）。棒と同じ区間の数。縦軸は右側に別に取る。 */
+  lines?: { term: string; color: string; buckets: Bucket[] }[];
 }) {
   const total = buckets.length;
   // 選んだ棒は元の区間の番号で持つ（拡大・移動しても同じ棒を指す）。
@@ -89,6 +93,12 @@ export function BucketChart({
   const group = Math.max(1, Math.ceil(view.length / MAX_BARS));
   const peak = peakIndex(bars);
   const top = valueTicks(Math.max(1, ...bars.map((b) => b.count))).at(-1) ?? 1;
+  // 言葉の線：棒と同じ範囲・同じまとめ方で数え、右の軸は言葉の最大値に合わせる。
+  const lineBars = lines.map((l) =>
+    groupBuckets(l.buckets.slice(range.start, range.end), MAX_BARS),
+  );
+  const lineTop =
+    valueTicks(Math.max(1, ...lineBars.flatMap((b) => b.map((x) => x.count)))).at(-1) ?? 1;
   const barOf = (raw: number | null) =>
     raw === null || raw < range.start || raw >= range.end
       ? null
@@ -275,7 +285,13 @@ export function BucketChart({
   const yTicks = valueTicks(Math.max(1, ...bars.map((b) => b.count)));
   const countText = (n: number) =>
     laugh ? `笑い ${n} 件` : filtered ? `一致 ${n} 件` : `${n} コメント`;
-  const label = (b: Bucket) => `${formatTime(b.startSec)} から ${countText(b.count)}`;
+  const termText = (i: number) =>
+    lines
+      .map((l, k) => `「${l.term}」${(lineBars[k][i]?.count ?? 0).toLocaleString("ja-JP")} 件`)
+      .join("・");
+  const detail = (b: Bucket, i: number) =>
+    lines.length > 0 ? `${countText(b.count)}・${termText(i)}` : countText(b.count);
+  const label = (b: Bucket, i: number) => `${formatTime(b.startSec)} から ${detail(b, i)}`;
   const playX = playSec > 0 && playSec >= fromSec && playSec < toSec ? xOf(playSec) : null;
 
   return (
@@ -301,7 +317,7 @@ export function BucketChart({
           }}
         >
           {shownBar
-            ? `${formatTime(shownBar.startSec)} から ・ ${countText(shownBar.count)}`
+            ? `${formatTime(shownBar.startSec)} から ・ ${detail(shownBar, shown as number)}`
             : "棒を押すと、その時刻から再生します"}
         </p>
         <button
@@ -318,7 +334,7 @@ export function BucketChart({
         style={{
           position: "relative",
           marginLeft: AXIS_LEFT,
-          marginRight: AXIS_RIGHT,
+          marginRight: lines.length > 0 ? AXIS_RIGHT_LINES : AXIS_RIGHT,
           marginTop: 20,
           marginBottom: AXIS_BOTTOM,
           height: HEIGHT,
@@ -407,7 +423,7 @@ export function BucketChart({
             <button
               key={b.startSec}
               type="button"
-              aria-label={label(b)}
+              aria-label={label(b, i)}
               aria-pressed={selectedBar === i}
               onClick={() => {
                 if (touchPicked.current || dragged.current) {
@@ -455,6 +471,75 @@ export function BucketChart({
             </button>
           ))}
         </div>
+        {lines.length > 0 && (
+          <>
+            <svg
+              aria-hidden
+              data-testid="keyword-lines"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                pointerEvents: "none",
+                overflow: "visible",
+              }}
+            >
+              {lines.map((l, k) => (
+                <polyline
+                  key={l.term}
+                  data-term={l.term}
+                  fill="none"
+                  stroke={l.color}
+                  strokeWidth={2}
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                  points={lineBars[k]
+                    .map(
+                      (b, i) =>
+                        `${((i + 0.5) / bars.length) * 100},${100 - (b.count / lineTop) * 100}`,
+                    )
+                    .join(" ")}
+                />
+              ))}
+            </svg>
+            <span
+              aria-hidden
+              style={{
+                position: "absolute",
+                top: -18,
+                left: "100%",
+                paddingLeft: 6,
+                fontSize: 11,
+                color: "var(--muted)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              言葉（件）
+            </span>
+            {valueTicks(lineTop).map((v) => (
+              <span
+                key={v}
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  left: "100%",
+                  bottom: `${(v / lineTop) * 100}%`,
+                  paddingLeft: 6,
+                  transform: "translateY(50%)",
+                  fontSize: 11,
+                  color: "var(--muted)",
+                  whiteSpace: "nowrap",
+                  pointerEvents: "none",
+                }}
+              >
+                {v.toLocaleString("ja-JP")}
+              </span>
+            ))}
+          </>
+        )}
         {playX !== null && (
           <div
             aria-hidden
@@ -491,6 +576,7 @@ export function BucketChart({
             }}
           >
             {formatTime(bars[hover].startSec)} ・ {bars[hover].count.toLocaleString("ja-JP")} 件
+            {lines.length > 0 && ` ・ ${termText(hover)}`}
           </div>
         )}
       </div>
