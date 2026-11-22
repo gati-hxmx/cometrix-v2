@@ -9,6 +9,7 @@ import { MemoPanel } from "./MemoPanel";
 import { PlaybackBar } from "./PlaybackBar";
 import { Segmented } from "./Segmented";
 import { Toast } from "./Toast";
+import { TocPanel } from "./TocPanel";
 import { TwitchPlayer } from "./TwitchPlayer";
 import { UrlForm } from "./UrlForm";
 import { type PlayerHandle, YoutubePlayer } from "./YoutubePlayer";
@@ -26,6 +27,12 @@ type State =
   | { kind: "job"; job: Job; buckets: Bucket[] | null };
 
 const POLL_MS = 3000;
+const TABS = [
+  { key: "chat", name: "チャット" },
+  { key: "memo", name: "メモ" },
+  { key: "toc", name: "目次" },
+] as const;
+type Tab = (typeof TABS)[number]["key"];
 const SERIES = [
   { key: "all", name: "すべて" },
   { key: "laugh", name: "笑い" },
@@ -71,7 +78,7 @@ export function AnalysisView({ id }: { id: string }) {
   const playerBox = useRef<HTMLDivElement>(null);
   const closeToast = useCallback(() => setToast(null), []);
   const [filter, setFilter] = useState<Filter>(EMPTY_FILTER);
-  const [tab, setTab] = useState<"chat" | "memo">("chat");
+  const [tab, setTab] = useState<Tab>("chat");
   const [filtered, setFiltered] = useState<Bucket[] | null>(null);
   const [series, setSeries] = useState<"all" | "laugh">("all");
   const laugh = series === "laugh";
@@ -307,10 +314,10 @@ export function AnalysisView({ id }: { id: string }) {
             <aside className="analysis-chat" style={{ ...card, marginTop: 16 }}>
               <div
                 role="tablist"
-                aria-label="チャットとメモ"
+                aria-label="チャット・メモ・目次"
                 style={{ display: "flex", gap: 8, marginBottom: 12 }}
               >
-                {(["chat", "memo"] as const).map((k) => (
+                {TABS.map(({ key: k, name }) => (
                   <button
                     key={k}
                     type="button"
@@ -322,7 +329,9 @@ export function AnalysisView({ id }: { id: string }) {
                     onClick={() => setTab(k)}
                     onKeyDown={(e) => {
                       if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-                        const next = k === "chat" ? "memo" : "chat";
+                        const at = TABS.findIndex((t) => t.key === k);
+                        const step = e.key === "ArrowRight" ? 1 : TABS.length - 1;
+                        const next = TABS[(at + step) % TABS.length].key;
                         setTab(next);
                         document.getElementById(`tab-${next}`)?.focus();
                       }
@@ -339,7 +348,7 @@ export function AnalysisView({ id }: { id: string }) {
                       color: tab === k ? "var(--accent-dark)" : "var(--text)",
                     }}
                   >
-                    {k === "chat" ? "チャット" : "メモ"}
+                    {name}
                   </button>
                 ))}
               </div>
@@ -366,6 +375,20 @@ export function AnalysisView({ id }: { id: string }) {
                 hidden={tab !== "memo"}
               >
                 <MemoPanel jobId={id} getTime={getTime} onSeek={seek} onError={setToast} />
+              </div>
+              <div
+                role="tabpanel"
+                id="panel-toc"
+                aria-labelledby="tab-toc"
+                className="chat-list-wrap"
+                hidden={tab !== "toc"}
+              >
+                <TocPanel
+                  buckets={recount ? filtered : state.kind === "job" ? state.buckets : null}
+                  laugh={laugh}
+                  getTime={getTime}
+                  onSeek={seek}
+                />
               </div>
             </aside>
           )}
