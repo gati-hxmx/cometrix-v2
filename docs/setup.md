@@ -51,6 +51,15 @@ LINE にしたい場合は、LINE Notify が 2025年3月に終了しているた
 
 毎日の groom（タスク発掘・保留の再開）と毎週の retro（振り返り）は、`.github/workflows/agent.yml` の schedule で動きます。止まった作業の自動再開は `.github/workflows/watchdog.yml` が15分ごとに行います（[自走ワークフロー](workflow.md#5-止まったときの自動再開)）。Claude Code のルーティンで動かしたい場合は、schedule を消してルーティンに同じ指示を登録します。
 
+### Actions の Claude が「断られて止まった」とき
+
+2026-11 の最初の週に、Actions 上の Claude が権限で断られて止まる問題を、許可の追加を1つずつ試す形で4回直しました（#13・#14・#15・#38）。同じ回り道をしないよう、次の順で確かめます。
+
+1. 実行ログの「拒否された操作」のステップ（ツール名とコマンドの先頭語だけ出る）で、断られたものを**すべて**一覧にする
+2. ツールは `agent.yml` の `env.CLAUDE_ALLOWED_TOOLS`（`claude_args: --allowedTools`）に足す。`.claude/settings.json` の allow だけでは Actions で効かない
+3. `Workflow initiated by non-human actor` と出たときは、起動した bot を、そのジョブの `allowed_bots` に足す
+4. 一覧にあるものを1つの PR でまとめて直す。deny と hooks は弱めない（弱める変更は高リスクで、人の承認が要る）
+
 ## 5. 手元（Mac）
 
 - Claude Code（デスクトップ）と Codex CLI を入れておきます。
