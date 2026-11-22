@@ -567,7 +567,7 @@ export function AnalysisView({ id }: { id: string }) {
               >
                 {purged ? (
                   <p role="status" style={{ margin: 0, padding: 16, color: "var(--muted)" }}>
-                    古いため、コメントの本文は整理しました。コメント数のグラフは見られます。
+                    古いため、コメントの本文は整理しました。コメント数のグラフは見られます。本文も見るときは「もう一度分析する」で取り直せます。
                   </p>
                 ) : (
                   <ChatList
