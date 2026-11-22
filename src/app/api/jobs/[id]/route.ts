@@ -1,6 +1,8 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../db/client";
 import { jobs } from "../../../../db/schema";
+import { retryAfterSec } from "../../../../lib/jobs";
+import { readProgress } from "../../../../lib/progress";
 
 export const dynamic = "force-dynamic";
 
@@ -17,9 +19,19 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       videoId: jobs.videoId,
       result: jobs.result,
       error: jobs.error,
+      updatedAt: jobs.updatedAt,
     })
     .from(jobs)
     .where(eq(jobs.id, id));
   if (!job) return Response.json({ error: { code: "not_found" } }, { status: 404 });
-  return Response.json(job);
+  // 取得中は result に進み具合だけが入っている（#43）。結果は done のときだけ返す。
+  const done = job.status === "done";
+  const { updatedAt, ...rest } = job;
+  return Response.json({
+    ...rest,
+    result: done ? job.result : null,
+    // done／failed のとき、あと何秒で分析し直せるか（#99）。
+    retryAfterSec: done || job.status === "failed" ? retryAfterSec(updatedAt) : null,
+    progress: job.status === "running" ? readProgress(job.result) : null,
+  });
 }
