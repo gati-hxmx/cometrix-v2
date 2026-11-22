@@ -43,6 +43,10 @@ const SERIES = [
   { key: "all", name: "すべて" },
   { key: "laugh", name: "笑い" },
 ] as const;
+const SPAM = [
+  { key: "on", name: "スパム除外" },
+  { key: "off", name: "除外なし" },
+] as const;
 const card = {
   background: "var(--surface)",
   border: "1px solid var(--line)",
@@ -152,13 +156,15 @@ export function AnalysisView({ id }: { id: string }) {
   const [filtered, setFiltered] = useState<Bucket[] | null>(null);
   const [series, setSeries] = useState<"all" | "laugh">("all");
   const laugh = series === "laugh";
+  const [spamMode, setSpamMode] = useState<"on" | "off">("on");
+  const spam = spamMode === "on";
   const onFilter = useCallback((f: Filter) => setFilter(f), []);
   const getTime = useCallback(() => player.current?.getTime() ?? 0, []);
   const filtering = isFiltering(filter);
   const isDone = state.kind === "job" && state.job.status === "done";
 
   // 絞り込み中・笑いを選んだときは、一致したコメントの数でグラフを描き直す。
-  const recount = filtering || laugh;
+  const recount = filtering || laugh || spam;
   useEffect(() => {
     if (!recount || !isDone) {
       setFiltered(null);
@@ -169,6 +175,7 @@ export function AnalysisView({ id }: { id: string }) {
     setFiltered(null);
     const p = filterParams(filter);
     if (laugh) p.set("laugh", "1");
+    if (spam) p.set("spam", "1");
     fetch(`/api/jobs/${id}/buckets?${p}`, { cache: "no-store" })
       .then((r) => {
         if (!r.ok) throw new Error(String(r.status));
@@ -181,13 +188,15 @@ export function AnalysisView({ id }: { id: string }) {
           setToast(
             laugh
               ? "笑いのグラフを読み込めませんでした。"
-              : "絞り込んだグラフを読み込めませんでした。",
+              : filtering
+                ? "絞り込んだグラフを読み込めませんでした。"
+                : "グラフを読み込めませんでした。",
           ),
       );
     return () => {
       stale = true;
     };
-  }, [filter, recount, laugh, isDone, id]);
+  }, [filter, recount, laugh, spam, isDone, id, filtering]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reload は分析し直し後にポーリングを始め直すための合図
   useEffect(() => {
@@ -377,12 +386,28 @@ export function AnalysisView({ id }: { id: string }) {
                   {laugh && filtered !== null ? "笑いの数（30秒ごと）" : "コメント数（30秒ごと）"}
                 </h2>
                 {done?.result && (
-                  <Segmented
-                    label="グラフに出すコメント"
-                    options={SERIES}
-                    value={series}
-                    onChange={setSeries}
-                  />
+                  <div
+                    style={{
+                      marginLeft: "auto",
+                      display: "flex",
+                      flexWrap: "wrap",
+                      justifyContent: "flex-end",
+                      gap: 8,
+                    }}
+                  >
+                    <Segmented
+                      label="スパム（連投・長いコピペ）"
+                      options={SPAM}
+                      value={spamMode}
+                      onChange={setSpamMode}
+                    />
+                    <Segmented
+                      label="グラフに出すコメント"
+                      options={SERIES}
+                      value={series}
+                      onChange={setSeries}
+                    />
+                  </div>
                 )}
               </div>
               {recount && matched !== null && (
@@ -391,8 +416,9 @@ export function AnalysisView({ id }: { id: string }) {
                   style={{ margin: "0 0 8px", color: "var(--muted)", fontSize: 13 }}
                 >
                   {filtering ? "絞り込み中：" : ""}
-                  {laugh ? "笑い" : "一致"} {matched.toLocaleString("ja-JP")} / 全{" "}
-                  {total.toLocaleString("ja-JP")} 件
+                  {spam ? "スパム除外・" : ""}
+                  {laugh ? "笑い" : filtering ? "一致" : "数えた"} {matched.toLocaleString("ja-JP")}{" "}
+                  / 全 {total.toLocaleString("ja-JP")} 件
                 </p>
               )}
               {state.kind === "job" && state.buckets ? (
