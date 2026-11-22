@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Bucket } from "../lib/chart";
 import { EMPTY_FILTER, filterParams, isFiltering } from "../lib/chat-filter";
+import { cleanClips } from "../lib/clips";
 import { BucketChart } from "./BucketChart";
 import { ChatList, type Filter } from "./ChatList";
 import { MemoPanel } from "./MemoPanel";
@@ -17,7 +18,7 @@ type Job = {
   status: "queued" | "running" | "done" | "failed";
   platform?: "youtube" | "twitch";
   videoId?: string | null;
-  result?: { videoId: string; title: string; totalComments: number } | null;
+  result?: { videoId: string; title: string; totalComments: number; clips?: unknown } | null;
   error?: { code: string; message: string } | null;
 };
 type State =
@@ -284,6 +285,7 @@ export function AnalysisView({ id }: { id: string }) {
                   getTime={getTime}
                   filtered={filtering && filtered !== null}
                   laugh={laugh && filtered !== null}
+                  clips={cleanClips(done?.result?.clips)}
                 />
               ) : (
                 <div

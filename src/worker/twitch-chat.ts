@@ -1,4 +1,5 @@
 import type { ChatMessage } from "../lib/buckets";
+import { type Clip, isSafeClipUrl } from "../lib/clips";
 import { JobFailure } from "./errors";
 import type { ChatFetcher } from "./fetch-chat";
 
@@ -113,15 +114,97 @@ export async function fetchTwitchComments(
   throw new JobFailure("fetch_failed", "コメントが多すぎて最後まで取得できません");
 }
 
-/** Helix API でタイトルを取る。設定がない・失敗したときは null（分析は止めない）。Secret は外に出さない。 */
+const MAX_CLIP_PAGES = 5;
+
+/** Helix の長さ（"1h2m3s"）を秒にする。読めなければ null。 */
+export function parseTwitchDuration(text: unknown): number | null {
+  if (typeof text !== "string" || !text) return null;
+  const m = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(text);
+  if (!m) return null;
+  return Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0);
+}
+
+/** clips の1ページから、この VOD のクリップだけを取り出す。壊れた応答は空。 */
+export function parseClips(body: unknown, videoId: string, lengthSec?: number): Clip[] {
+  const data = (body as { data?: unknown } | null)?.data;
+  if (!Array.isArray(data)) return [];
+  const out: Clip[] = [];
+  for (const c of data) {
+    if (!c || typeof c !== "object") continue;
+    const r = c as Record<string, unknown>;
+    if (String(r.video_id ?? "") !== videoId) continue;
+    const off = r.vod_offset;
+    if (typeof off !== "number" || !Number.isFinite(off) || off < 0) continue;
+    if (lengthSec !== undefined && off > lengthSec) continue;
+    if (typeof r.id !== "string" || !isSafeClipUrl(r.url)) continue;
+    out.push({
+      id: r.id,
+      title: typeof r.title === "string" ? r.title : "",
+      url: r.url,
+      offsetSec: off,
+      durationSec: typeof r.duration === "number" && r.duration > 0 ? Math.round(r.duration) : 0,
+    });
+  }
+  return out;
+}
+
+type HelixVideo = { title?: string; user_id?: string; created_at?: string; duration?: string };
+
+async function fetchClips(
+  videoId: string,
+  video: HelixVideo | undefined,
+  headers: Record<string, string>,
+  f: FetchLike,
+): Promise<Clip[]> {
+  const length = parseTwitchDuration(video?.duration);
+  const start = Date.parse(video?.created_at ?? "");
+  if (!video?.user_id || length === null || Number.isNaN(start)) return [];
+  const params = new URLSearchParams({
+    broadcaster_id: video.user_id,
+    started_at: new Date(start).toISOString(),
+    ended_at: new Date(start + (length + 60) * 1000).toISOString(),
+    first: "100",
+  });
+  const seen = new Map<string, Clip>();
+  for (let page = 0; page < MAX_CLIP_PAGES; page++) {
+    const r = await f(`https://api.twitch.tv/helix/clips?${params}`, {
+      headers,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (!r.ok) break;
+    const body = (await r.json()) as { pagination?: { cursor?: string } };
+    for (const c of parseClips(body, videoId, length)) seen.set(c.id, c);
+    const cursor = body.pagination?.cursor;
+    if (!cursor) break;
+    params.set("after", cursor);
+  }
+  return [...seen.values()].sort((a, b) => a.offsetSec - b.offsetSec);
+}
+
+export type TwitchInfo = { title: string | null; clips: Clip[] };
+
+/** Helix API でタイトルを取る。設定がない・失敗したときは null。 */
 export async function fetchTwitchTitle(
   videoId: string,
   env: Record<string, string | undefined> = process.env,
   f: FetchLike = fetch,
 ): Promise<string | null> {
+  return (await fetchTwitchInfo(videoId, env, f)).title;
+}
+
+/**
+ * Helix API でタイトルとクリップを取る。設定がない・失敗したときは空（分析は止めない）。
+ * Secret は外に出さない。
+ */
+export async function fetchTwitchInfo(
+  videoId: string,
+  env: Record<string, string | undefined> = process.env,
+  f: FetchLike = fetch,
+): Promise<TwitchInfo> {
+  const none: TwitchInfo = { title: null, clips: [] };
   const id = env.TWITCH_CLIENT_ID;
   const secret = env.TWITCH_CLIENT_SECRET;
-  if (!id || !secret) return null;
+  if (!id || !secret) return none;
   try {
     const t = await f("https://id.twitch.tv/oauth2/token", {
       method: "POST",
@@ -133,25 +216,28 @@ export async function fetchTwitchTitle(
       }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    if (!t.ok) return null;
+    if (!t.ok) return none;
     const { access_token } = (await t.json()) as { access_token?: string };
-    if (!access_token) return null;
+    if (!access_token) return none;
+    const headers = { "Client-Id": id, Authorization: `Bearer ${access_token}` };
     const v = await f(`https://api.twitch.tv/helix/videos?id=${encodeURIComponent(videoId)}`, {
-      headers: { "Client-Id": id, Authorization: `Bearer ${access_token}` },
+      headers,
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    if (!v.ok) return null;
-    const body = (await v.json()) as { data?: { title?: string }[] };
-    return body.data?.[0]?.title || null;
+    if (!v.ok) return none;
+    const video = ((await v.json()) as { data?: HelixVideo[] }).data?.[0];
+    // クリップが取れなくてもタイトルは返す。
+    const clips = await fetchClips(videoId, video, headers, f).catch(() => []);
+    return { title: video?.title || null, clips };
   } catch {
-    return null;
+    return none;
   }
 }
 
 export const fetchWithTwitch: ChatFetcher = async (videoId) => {
-  const [messages, title] = await Promise.all([
+  const [messages, info] = await Promise.all([
     fetchTwitchComments(videoId),
-    fetchTwitchTitle(videoId),
+    fetchTwitchInfo(videoId),
   ]);
-  return { title: title ?? `Twitch VOD ${videoId}`, messages };
+  return { title: info.title ?? `Twitch VOD ${videoId}`, messages, clips: info.clips };
 };

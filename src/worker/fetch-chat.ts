@@ -4,12 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { ChatMessage } from "../lib/buckets";
+import type { Clip } from "../lib/clips";
 import { parseLiveChat } from "./chat-parse";
 import { classifyYtDlpError, JobFailure } from "./errors";
 
 const execFileAsync = promisify(execFile);
 
-export type FetchedChat = { title: string; messages: ChatMessage[] };
+export type FetchedChat = { title: string; messages: ChatMessage[]; clips?: Clip[] };
 /** 取得の差し替え口。テストでは保存済みのサンプルを返す関数を渡す。 */
 export type ChatFetcher = (
   videoId: string,

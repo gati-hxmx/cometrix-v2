@@ -56,7 +56,7 @@ export async function runJob(db: Db, job: ClaimedJob, fetchChat: ChatFetcher) {
   try {
     const parsed = parseVideoUrl(job.url);
     if (!parsed.ok) throw new JobFailure("invalid_url");
-    const { title, messages } = await fetchChat(parsed.videoId, parsed.url, parsed.platform);
+    const { title, messages, clips } = await fetchChat(parsed.videoId, parsed.url, parsed.platform);
     const valid = inVideo(messages);
     if (valid.length === 0) throw new JobFailure("no_chat");
     const buckets = bucketize(valid);
@@ -93,6 +93,7 @@ export async function runJob(db: Db, job: ClaimedJob, fetchChat: ChatFetcher) {
             platform: parsed.platform,
             videoId: parsed.videoId,
             title,
+            clips: clips ?? [],
             totalComments: valid.length,
             lastBucketSec: buckets[buckets.length - 1].startSec,
           },
