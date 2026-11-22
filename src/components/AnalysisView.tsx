@@ -7,9 +7,11 @@ import { EMPTY_FILTER, filterParams, isFiltering } from "../lib/chat-filter";
 import { cleanClips } from "../lib/clips";
 import { LEAD_DEFAULT, LEAD_KEY, type Lead, leadTarget, parseLead } from "../lib/lead";
 import { type FetchProgress, progressLabel, progressPercent } from "../lib/progress";
+import { pickPeaks } from "../lib/toc";
 import { BucketChart } from "./BucketChart";
 import { ChatList, type Filter } from "./ChatList";
 import { ClipPanel } from "./ClipPanel";
+import { ExportMenu } from "./ExportMenu";
 import { KeywordLines } from "./KeywordLines";
 import { MemoPanel } from "./MemoPanel";
 import { PlaybackBar } from "./PlaybackBar";
@@ -25,7 +27,13 @@ type Job = {
   status: "queued" | "running" | "done" | "failed";
   platform?: "youtube" | "twitch";
   videoId?: string | null;
-  result?: { videoId: string; title: string; totalComments: number; clips?: unknown } | null;
+  result?: {
+    videoId: string;
+    title: string;
+    totalComments: number;
+    lastBucketSec?: number;
+    clips?: unknown;
+  } | null;
   error?: { code: string; message: string } | null;
   progress?: FetchProgress | null;
   /** done／failed のとき、あと何秒で分析し直せるか（#99）。 */
@@ -150,6 +158,9 @@ function FetchProgressBar({ progress }: { progress: FetchProgress }) {
 export function AnalysisView({ id }: { id: string }) {
   const [state, setState] = useState<State>({ kind: "loading" });
   const [toast, setToast] = useState<string | null>(null);
+  // できました（4秒で消える）のお知らせ。書き出しのコピーなど（#59）。
+  const [doneToast, setDoneToast] = useState<string | null>(null);
+  const closeDoneToast = useCallback(() => setDoneToast(null), []);
   // 分析し直したあとにポーリングを再開するための番号（#99）。
   const [reload, setReload] = useState(0);
   const [reanalyzing, setReanalyzing] = useState(false);
@@ -404,10 +415,34 @@ export function AnalysisView({ id }: { id: string }) {
       {job?.status !== "failed" && (
         <div className="analysis-grid">
           <div className="analysis-main">
-            <section style={{ ...card, marginTop: 16 }}>
-              <h1 style={{ fontSize: 20, margin: "0 0 4px" }}>
-                {done?.result?.title ?? (waiting ? "分析中…" : "")}
-              </h1>
+            <section className="menu-host" style={{ ...card, marginTop: 16 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                <h1 style={{ fontSize: 20, margin: "0 0 4px", flex: 1, overflowWrap: "anywhere" }}>
+                  {done?.result?.title ?? (waiting ? "分析中…" : "")}
+                </h1>
+                {done?.result && (
+                  <div style={{ margin: "-8px -8px 0 0" }}>
+                    <ExportMenu
+                      jobId={id}
+                      title={done.result.title}
+                      videoUrl={
+                        done.platform === "twitch"
+                          ? `https://www.twitch.tv/videos/${done.result.videoId}`
+                          : `https://www.youtube.com/watch?v=${done.result.videoId}`
+                      }
+                      durationSec={(done.result.lastBucketSec ?? 0) + 30}
+                      filterQuery={filterParams(filter).toString()}
+                      filtering={filtering}
+                      toc={pickPeaks(
+                        (recount ? filtered : state.kind === "job" ? state.buckets : null) ?? [],
+                      )}
+                      unit={users ? "人" : "件"}
+                      onDone={setDoneToast}
+                      onError={setToast}
+                    />
+                  </div>
+                )}
+              </div>
               <p style={{ margin: 0, color: "var(--muted)" }}>
                 {done?.result
                   ? `コメント ${done.result.totalComments.toLocaleString("ja-JP")} 件`
@@ -638,6 +673,7 @@ export function AnalysisView({ id }: { id: string }) {
         </div>
       )}
       <Toast message={toast} onClose={closeToast} />
+      {!toast && <Toast kind="done" message={doneToast} onClose={closeDoneToast} />}
     </main>
   );
 }
