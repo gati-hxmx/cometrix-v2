@@ -219,17 +219,26 @@ export function AnalysisView({ id }: { id: string }) {
   const [preset, setPreset] = useState<{ filter: Filter; n: number } | null>(null);
   const chatBox = useRef<HTMLElement>(null);
   // よくコメントした人（#64）の名前を押したとき：チャットをその人だけに絞り、チャットの札を見せる
-  const pickAuthor = useCallback((author: string) => {
-    setPreset((p) => ({ filter: { ...EMPTY_FILTER, user: [author] }, n: (p?.n ?? 0) + 1 }));
-    setTab("chat");
-    const box = chatBox.current;
-    if (box) {
-      const r = box.getBoundingClientRect();
-      // チャットがほとんど見えていないとき（スマホでは下にある）だけ、チャットまで動かす
-      if (r.bottom < 160 || r.top > window.innerHeight - 160)
-        box.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, []);
+  const filterRef = useRef(filter);
+  filterRef.current = filter;
+  const pickAuthor = useCallback(
+    (term: string, author: string) => {
+      // 含めるユーザーだけを入れ替え、ほかの絞り込みは残す。前の絞り込みには［元に戻す］で戻れる
+      const before = filterRef.current;
+      const apply = (f: Filter) => setPreset((p) => ({ filter: f, n: (p?.n ?? 0) + 1 }));
+      apply({ ...before, user: [term] });
+      pushNote(`チャットを「${author}」のコメントだけにしました。`, () => apply(before));
+      setTab("chat");
+      const box = chatBox.current;
+      if (box) {
+        const r = box.getBoundingClientRect();
+        // チャットがほとんど見えていないとき（スマホでは下にある）だけ、チャットまで動かす
+        if (r.bottom < 160 || r.top > window.innerHeight - 160)
+          box.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    },
+    [pushNote],
+  );
   const [tab, setTab] = useState<Tab>("chat");
   const [stampSignal, setStampSignal] = useState(0);
   // 今グラフに出している範囲（区間の番号）。画像の保存に使う（#69）。

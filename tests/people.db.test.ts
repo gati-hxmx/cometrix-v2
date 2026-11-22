@@ -61,6 +61,24 @@ describe.skipIf(!url)("常連と初見の API（Postgres）", () => {
     expect(p.firstTimers).toBeNull();
   });
 
+  test("名前の大文字・小文字は同じ人として数え、空の名前は数えない", async () => {
+    const id = await seed(["Taro", "taro", "TARO", "jiro", "", ""], null);
+    const p = await people(id);
+    expect(p.top).toEqual([
+      { author: "TARO", count: 3 },
+      { author: "jiro", count: 1 },
+    ]);
+    expect(p.authors).toBe(2);
+  });
+
+  test("初めての人は、直近の 30 本の配信とだけ比べる", async () => {
+    await seed(["old"], ch(1));
+    for (let i = 0; i < 30; i++) await seed([`p${i}`], ch(100 + i));
+    const id = await seed(["old", "p0", "new", "NEW"], ch(1000));
+    // old は 31 本前なので比べない。new と NEW は同じ人
+    expect((await people(id)).firstTimers).toEqual({ count: 2, pastJobs: 30 });
+  });
+
   test("上位は10人まで", async () => {
     const id = await seed(
       Array.from({ length: 15 }, (_, i) => `u${i}`),

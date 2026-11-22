@@ -67,12 +67,13 @@ export function exactName(t: string): string | null {
   return t.length > 2 && t.startsWith('"') && t.endsWith('"') ? t.slice(1, -1) : null;
 }
 
-/** 名前が同じ人だけに合う語（名前は 100 文字までに収める）。 */
-export function exactUserTerm(author: string): string {
-  return `"${author
-    .trim()
-    .toLowerCase()
-    .slice(0, MAX_TERM - 2)}"`;
+/**
+ * 名前が同じ人だけに合う語。前後の空白は取らずに比べる（DB と同じ規則にするため）。
+ * 空の名前・長すぎて語に入らない名前は null（押せない）。
+ */
+export function exactUserTerm(author: string): string | null {
+  if (author === "" || author.length > MAX_TERM - 2) return null;
+  return `"${author.toLowerCase()}"`;
 }
 
 /** 絞り込み中か（どれか1つでも語がある）。 */
@@ -100,7 +101,7 @@ export function matches(m: { author: string; body: string }, f: Filter): boolean
   const hit = (t: string) => compileRegex(t)?.test(m.body) ?? false;
   const who = (t: string) => {
     const name = exactName(t);
-    return name === null ? author.includes(t) : author.trim() === name;
+    return name === null ? author.includes(t) : author === name;
   };
   if (f.xq.some((t) => body.includes(t))) return false;
   if (f.xuser.some(who)) return false;

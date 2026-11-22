@@ -85,6 +85,25 @@ describe.skipIf(!url)("チャットの絞り込み API（Postgres）", () => {
     ]);
   });
 
+  test('"名前" は前後の空白も含めて比べ、JS の matches と同じ結果になる（#64）', async () => {
+    const [job] = await db
+      .insert(jobs)
+      .values({ url: "u", videoId: "bbbbbbbbbbb", status: "done" })
+      .returning({ id: jobs.id });
+    await db.insert(chatMessages).values([
+      { jobId: job.id, offsetMs: 1000, author: "　全角さん", body: "a" },
+      { jobId: job.id, offsetMs: 2000, author: "全角さん", body: "b" },
+    ]);
+    const bodies = async (term: string) =>
+      (
+        (await (await get(messages, job.id, `user=${encodeURIComponent(term)}`)).json()) as {
+          body: string;
+        }[]
+      ).map((r) => r.body);
+    expect(await bodies('"　全角さん"')).toEqual(["a"]);
+    expect(await bodies('"全角さん"')).toEqual(["b"]);
+  });
+
   test("複数の語は OR、除外は優先、除外ユーザーも効く", async () => {
     const id = await seed();
     const authors = async (fn: typeof messages, qs: string) =>

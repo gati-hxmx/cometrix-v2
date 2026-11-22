@@ -1,6 +1,8 @@
 // 常連と初見（#64）の形。上位は10人まで。
 
 export const TOP_PEOPLE = 10;
+/** 初めての人を数えるときに比べる、前の配信の本数の上限 */
+export const PAST_JOBS = 30;
 
 export type Person = { author: string; count: number };
 

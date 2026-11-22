@@ -17,7 +17,7 @@ export function filterConds(f: Filter): SQL[] {
         const name = exactName(t);
         return name === null
           ? sql`strpos(lower(${chatMessages.author}), ${t}) > 0`
-          : sql`lower(btrim(${chatMessages.author})) = ${name}`;
+          : sql`lower(${chatMessages.author}) = ${name}`;
       }),
       sql` or `,
     )})`;
