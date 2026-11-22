@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+"""デザインのルール（docs/design/）のうち、機械で見つけられる違反を止める。
+
+scripts/check から呼ぶ。止めるもの：
+  1. 色の直書き（#fff・rgb() など）。色は src/app/globals.css の CSS 変数だけ（配色）
+  2. ブラウザの確認ダイアログ confirm / alert / prompt（部品 2-7・4-2）
+  3. ブラウザのプルダウン <select>（部品 2-7・5-9）
+  4. 画面（.tsx）の絵文字（部品 3-2。線のアイコンだけ。✓ ✕ ⚠ などの印は対象外。
+     笑いの判定のように、数えるための絵文字は .ts に置く）
+  5. 動きを入れたのに「動きを減らす」設定で止めていない CSS（部品 5-11）
+どうしても要る行には `design-lint: allow <理由>` と書く（PR にも理由を書く）。
+"""
+import pathlib
+import re
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+SRC = ROOT / "src"
+COLOR_HOME = SRC / "app" / "globals.css"
+ALLOW = "design-lint: allow"
+
+HEX = re.compile(r"(?<![\w&])#[0-9a-fA-F]{3,8}\b")
+FUNC = re.compile(r"\b(?:rgba?|hsla?|oklch|lab|lch)\(")
+DIALOG = re.compile(r"(?<![\w.])(?:window\.)?(?:confirm|alert|prompt)\s*\(")
+SELECT = re.compile(r"<select[\s>]")
+EMOJI = re.compile("[\U0001F300-\U0001FAFF\U0001F000-\U0001F2FF]")
+ANIM = re.compile(r"\b(?:animation|transition)\s*:")
+
+
+def strip_comment(line: str) -> str:
+    # 行末の // コメントは見ない（URL の // は残す）
+    return re.sub(r"(?<!:)//.*$", "", line)
+
+
+def main() -> int:
+    bad = []
+    for path in sorted(SRC.rglob("*")):
+        if path.suffix not in {".ts", ".tsx", ".css"} or not path.is_file():
+            continue
+        rel = path.relative_to(ROOT)
+        text = path.read_text(encoding="utf-8")
+        is_css = path.suffix == ".css"
+        for no, raw in enumerate(text.splitlines(), 1):
+            if ALLOW in raw:
+                continue
+            line = raw if is_css else strip_comment(raw)
+            # 数字だけの #12 は Issue 番号として見逃す（色の #123 も見逃すが、まれなので許す）
+            colors = [m for m in HEX.findall(line) if not m[1:].isdigit()]
+            if path != COLOR_HOME and (colors or FUNC.search(line)):
+                bad.append(f"{rel}:{no}: 色を直書きしています。src/app/globals.css の変数を使ってください（配色）")
+            if not is_css and DIALOG.search(line):
+                bad.append(f"{rel}:{no}: ブラウザの確認ダイアログは使いません。［元に戻す］かその場で聞く形にします（部品 4-2）")
+            if not is_css and SELECT.search(line):
+                bad.append(f"{rel}:{no}: <select> は使いません。チップか小さなメニューにします（部品 5-9）")
+            if path.suffix == ".tsx" and EMOJI.search(line):
+                bad.append(f"{rel}:{no}: 絵文字は使いません。線のアイコンにします（部品 3-2・アイコン）")
+        if is_css and ANIM.search(text) and "prefers-reduced-motion" not in text:
+            bad.append(f"{rel}: 動きがあるのに prefers-reduced-motion で止めていません（部品 5-11）")
+    for b in bad:
+        print(f"  ✗ {b}")
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
