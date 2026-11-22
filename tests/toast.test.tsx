@@ -24,3 +24,24 @@ describe("Toast（基本 8-1：できませんでした）", () => {
     expect(closed).toBe(0);
   });
 });
+
+describe("Toast（基本 8-1：できました・できました＋元に戻す）", () => {
+  it("できました＋［元に戻す］は緑の ✓、元に戻すと閉じるボタンを出す", () => {
+    const html = renderToStaticMarkup(
+      <Toast kind="done" message="範囲を削除しました" onUndo={() => {}} onClose={() => {}} />,
+    );
+    expect(html).toContain('role="status"');
+    expect(html).toContain("toast-done");
+    expect(html).toContain("✓ 範囲を削除しました");
+    expect(html).toContain(">元に戻す</button>");
+    expect(html).toContain('aria-label="お知らせを閉じる"');
+  });
+
+  it("できましたは［元に戻す］を出さない", () => {
+    const html = renderToStaticMarkup(
+      <Toast kind="done" message="元に戻しました" onClose={() => {}} />,
+    );
+    expect(html).toContain("✓ 元に戻しました");
+    expect(html).not.toContain("元に戻す</button>");
+  });
+});
