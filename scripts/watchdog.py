@@ -32,7 +32,7 @@ WATCH_INTERVAL = timedelta(minutes=15)  # watchdog.yml の間隔。再実行も�
 MAX_NUDGES = 2
 SKIP_LABELS = {"needs-human", "blocked"}
 # Codex が利用上限に達したときの返事（例「You have reached your Codex usage limits」）。
-CODEX_LIMIT = re.compile(r"usage limit", re.IGNORECASE)
+CODEX_LIMIT = re.compile(r"reached your .*usage limit", re.IGNORECASE)
 MARKER = re.compile(r"<!-- watchdog:(\w[\w-]*) sha=([0-9a-f]+) -->")
 
 
@@ -226,7 +226,8 @@ def handle_pr(repo, server, pr, now, codex, token, busy, all_busy, act):
 
     mark = f"<!-- watchdog:{action} sha={state.head_sha} -->"
     if action in ("claude-review", "advance"):
-        why = ("Codex のレビューが始まらないため、Claude が代わりにレビューします。"
+        why = (("Codex が利用上限のため" if state.codex_limited else "Codex のレビューが始まらないため")
+               + "、Claude が代わりにレビューします。"
                if action == "claude-review" else
                f"レビューのあと{IDLE.seconds // 60}分以上動きがないため、Claude が次の工程から再開します。")
         def run_agent():
