@@ -47,6 +47,7 @@ export function BucketChart({
   onSeek,
   getTime,
   filtered = false,
+  laugh = false,
 }: {
   buckets: Bucket[];
   onSeek: (sec: number) => void;
@@ -54,6 +55,8 @@ export function BucketChart({
   getTime?: () => number;
   /** 絞り込み中。空の文言と棒の説明を「一致」にする。 */
   filtered?: boolean;
+  /** 笑いのコメントだけの数（#41）。棒を2番目の系列色にし、文言を「笑い」にする。 */
+  laugh?: boolean;
 }) {
   const total = buckets.length;
   // 選んだ棒は元の区間の番号で持つ（拡大・移動しても同じ棒を指す）。
@@ -143,7 +146,11 @@ export function BucketChart({
   if (!hasBars) {
     return (
       <p style={{ margin: 0, padding: "32px 0", textAlign: "center", color: "var(--muted)" }}>
-        {filtered ? "一致するコメントがありません" : "コメントがありません"}
+        {laugh
+          ? "笑いのコメントがありません"
+          : filtered
+            ? "一致するコメントがありません"
+            : "コメントがありません"}
       </p>
     );
   }
@@ -266,8 +273,9 @@ export function BucketChart({
 
   const ticks = timeTicks(fromSec, toSec, maxTickCount(plotWidth));
   const yTicks = valueTicks(Math.max(1, ...bars.map((b) => b.count)));
-  const label = (b: Bucket) =>
-    `${formatTime(b.startSec)} から ${filtered ? `一致 ${b.count} 件` : `${b.count} コメント`}`;
+  const countText = (n: number) =>
+    laugh ? `笑い ${n} 件` : filtered ? `一致 ${n} 件` : `${n} コメント`;
+  const label = (b: Bucket) => `${formatTime(b.startSec)} から ${countText(b.count)}`;
   const playX = playSec > 0 && playSec >= fromSec && playSec < toSec ? xOf(playSec) : null;
 
   return (
@@ -293,7 +301,7 @@ export function BucketChart({
           }}
         >
           {shownBar
-            ? `${formatTime(shownBar.startSec)} から ・ ${filtered ? `一致 ${shownBar.count} 件` : `${shownBar.count} コメント`}`
+            ? `${formatTime(shownBar.startSec)} から ・ ${countText(shownBar.count)}`
             : "棒を押すと、その時刻から再生します"}
         </p>
         <button
@@ -435,7 +443,9 @@ export function BucketChart({
                       ? "var(--accent-dark)"
                       : i === peak
                         ? "var(--accent)"
-                        : "var(--chart-1)",
+                        : laugh
+                          ? "var(--chart-2)"
+                          : "var(--chart-1)",
                   filter: hover === i ? "brightness(0.8)" : undefined,
                   outline: selectedBar === i ? "2px solid var(--accent-dark)" : "none",
                   outlineOffset: 1,
