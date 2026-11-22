@@ -7,6 +7,7 @@
  * - w・ｗ が2つ以上続く（ww・ｗｗｗ）
  * - 英字・数字のあとでない w・ｗ 1つでコメントが終わる（「それなw」「w」。show・1w は除く）
  * - 英字にはさまれない lol・lmao・lmfao、haha・hahaha…
+ * - 韓国語 ㅋ が2つ以上（ㅋㅋ）、中国語 哈哈・233（数字の途中は除く）、インドネシア語 wkwk
  * - 😂・🤣・😆、YouTube の絵文字の名前（:face-with-tears-of-joy: など。区切りは - か _）
  */
 export const LAUGH_PATTERN = [
@@ -16,6 +17,10 @@ export const LAUGH_PATTERN = [
   "(^|[^a-z0-9])[wｗ]$",
   "(^|[^a-z])(lol|lmf?ao)([^a-z]|$)",
   "ha(ha)+",
+  "ㅋ{2,}",
+  "哈哈",
+  "(^|[^0-9])233+([^0-9]|$)",
+  "wkwk",
   "😂",
   "🤣",
   "😆",
