@@ -70,3 +70,8 @@ LINE にしたい場合は、LINE Notify が 2025年3月に終了しているた
 1. 「Use this template」で新しいリポジトリを作る
 2. 上の 1〜3 を新しいリポジトリにも行う（Secret とラベル・ルール）
 3. 「作りたいもの」を書いた Issue を立て、`agent` ラベルを付ける。triage が stack-select から始めます
+
+## 7. 公開するときの取得の上限（#49）
+
+- 連打の制限は、`x-forwarded-for` の先頭（なければ `x-real-ip`）を接続元として数えます。直接公開すると詐称できるので、必ず逆プロキシ（Caddy など）の背後に置き、そのヘッダを上書きさせてください。
+- 上限は環境変数で変えられます：`MAX_PENDING_JOBS`（初期 50）・`MAX_CONCURRENT_FETCH`（初期 2）・`RATE_LIMIT_MAX`（初期 10）・`RATE_LIMIT_WINDOW_SEC`（初期 60）。

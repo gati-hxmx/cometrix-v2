@@ -1,6 +1,7 @@
 "use client";
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { formatTime } from "../lib/chart";
+import { ResumeButton } from "./ResumeButton";
 
 type YTPlayer = {
   seekTo(sec: number, allowSeekAhead: boolean): void;
@@ -14,7 +15,7 @@ type YTApi = {
     opts: {
       videoId: string;
       playerVars?: Record<string, number>;
-      events: { onReady: () => void; onError: () => void };
+      events: { onReady: () => void; onError: () => void; onAutoplayBlocked?: () => void };
     },
   ) => YTPlayer;
 };
@@ -55,6 +56,8 @@ export function YoutubePlayer({ videoId, ref }: { videoId: string; ref?: Ref<Pla
   const [lastSec, setLastSec] = useState(0);
   const lastSecRef = useRef(0);
   const [failed, setFailed] = useState(false);
+  // 自動再生を止められた。ボタンを押す（ユーザー操作）で、最後に押した時刻から再生する。
+  const [blocked, setBlocked] = useState(false);
 
   useImperativeHandle(ref, () => ({
     getTime() {
@@ -77,6 +80,7 @@ export function YoutubePlayer({ videoId, ref }: { videoId: string; ref?: Ref<Pla
   useEffect(() => {
     let cancelled = false;
     setFailed(false);
+    setBlocked(false);
     loadApi()
       .then((YT) => {
         if (cancelled || !host.current) return;
@@ -95,6 +99,7 @@ export function YoutubePlayer({ videoId, ref }: { videoId: string; ref?: Ref<Pla
               }
             },
             onError: () => setFailed(true),
+            onAutoplayBlocked: () => setBlocked(true),
           },
         });
       })
@@ -109,6 +114,33 @@ export function YoutubePlayer({ videoId, ref }: { videoId: string; ref?: Ref<Pla
   return (
     <div style={{ position: "relative", aspectRatio: "16 / 9", background: "var(--surface-2)" }}>
       <div ref={host} style={{ position: "absolute", inset: 0 }} className="yt-host" />
+      {blocked && !failed && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            pointerEvents: "none",
+          }}
+        >
+          <div style={{ pointerEvents: "auto", maxWidth: "100%" }}>
+            <ResumeButton
+              sec={lastSec}
+              onPlay={() => {
+                const p = player.current;
+                if (p) {
+                  p.seekTo(lastSecRef.current, true);
+                  p.playVideo();
+                }
+                setBlocked(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
       {failed && (
         <div
           style={{
