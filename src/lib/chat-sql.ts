@@ -22,3 +22,8 @@ export function filterConds(f: Filter): SQL[] {
 export function laughCond(): SQL {
   return sql`btrim(${chatMessages.body}, ${LAUGH_TRIM}) ~* ${LAUGH_PATTERN}`;
 }
+
+/** 言葉を含むコメントだけにする条件（hasTerm と同じ規則。term は normalizeKeyword 済み）。 */
+export function termCond(term: string): SQL {
+  return sql`strpos(lower(normalize(${chatMessages.body}, NFKC)), ${term}) > 0`;
+}
