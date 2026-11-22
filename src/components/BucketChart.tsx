@@ -60,8 +60,11 @@ export function BucketChart({
   clips = [],
   lines = [],
   keyHint = false,
+  onRange,
 }: {
   buckets: Bucket[];
+  /** 今出している範囲（区間の番号）が変わったとき。画像の保存に使う（#69） */
+  onRange?: (r: Range) => void;
   onSeek: (sec: number) => void;
   /** キー操作の案内を出す（初めてのときだけ、#66） */
   keyHint?: boolean;
@@ -115,6 +118,9 @@ export function BucketChart({
   const range = snapRange(exact, total);
   const zoomed = range.end - range.start < total;
   const view = buckets.slice(range.start, range.end);
+  useEffect(() => {
+    onRange?.({ start: range.start, end: range.end });
+  }, [onRange, range.start, range.end]);
   const bars = groupBuckets(view, MAX_BARS, users ? "max" : "sum");
   const group = Math.max(1, Math.ceil(view.length / MAX_BARS));
   const peak = peakIndex(bars);

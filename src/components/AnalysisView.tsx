@@ -175,6 +175,8 @@ export function AnalysisView({ id }: { id: string }) {
   const [filter, setFilter] = useState<Filter>(EMPTY_FILTER);
   const [tab, setTab] = useState<Tab>("chat");
   const [stampSignal, setStampSignal] = useState(0);
+  // 今グラフに出している範囲（区間の番号）。画像の保存に使う（#69）。
+  const [chartRange, setChartRange] = useState<{ start: number; end: number } | null>(null);
   // キー操作の案内は、一度キーを使うまで出す（部品 4-8）。読めないブラウザでは出したまま。
   const [keysSeen, setKeysSeen] = useState(true);
   useEffect(() => {
@@ -435,6 +437,15 @@ export function AnalysisView({ id }: { id: string }) {
     termData[k.term] ? [{ term: k.term, color: k.color, buckets: termData[k.term] }] : [],
   );
 
+  const chartHeading =
+    users && filtered !== null
+      ? "コメントした人数（30秒ごと）"
+      : laugh && filtered !== null
+        ? "笑いの数（30秒ごと）"
+        : "コメント数（30秒ごと）";
+  const chartBuckets =
+    state.kind === "job" ? (recount && filtered ? filtered : state.buckets) : null;
+
   return (
     <main className="analysis" style={{ maxWidth: 1240, margin: "0 auto", padding: "16px" }}>
       <div className="analysis-url">
@@ -497,6 +508,17 @@ export function AnalysisView({ id }: { id: string }) {
                         (recount ? filtered : state.kind === "job" ? state.buckets : null) ?? [],
                       )}
                       unit={users ? "人" : "件"}
+                      graph={
+                        chartBuckets && chartBuckets.length > 0
+                          ? {
+                              heading: chartHeading,
+                              buckets: chartRange
+                                ? chartBuckets.slice(chartRange.start, chartRange.end)
+                                : chartBuckets,
+                              combine: users && filtered !== null ? "max" : "sum",
+                            }
+                          : null
+                      }
                       onDone={setDoneToast}
                       onError={setToast}
                     />
@@ -546,13 +568,7 @@ export function AnalysisView({ id }: { id: string }) {
                   marginBottom: 8,
                 }}
               >
-                <h2 style={{ fontSize: 16, margin: 0 }}>
-                  {users && filtered !== null
-                    ? "コメントした人数（30秒ごと）"
-                    : laugh && filtered !== null
-                      ? "笑いの数（30秒ごと）"
-                      : "コメント数（30秒ごと）"}
-                </h2>
+                <h2 style={{ fontSize: 16, margin: 0 }}>{chartHeading}</h2>
                 {done?.result && (
                   <div
                     style={{
@@ -595,6 +611,7 @@ export function AnalysisView({ id }: { id: string }) {
                   key={id}
                   keyHint={!keysSeen}
                   buckets={recount && filtered ? filtered : state.buckets}
+                  onRange={setChartRange}
                   onSeek={seekPeak}
                   getTime={getTime}
                   filtered={filtering && filtered !== null}

@@ -14,6 +14,7 @@ test("閉じているときは「書き出し」の ⋮ ボタンだけ", () => 
       filtering={false}
       toc={[]}
       unit="件"
+      graph={null}
       onDone={() => {}}
       onError={() => {}}
     />,
