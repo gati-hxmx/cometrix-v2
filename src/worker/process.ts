@@ -12,6 +12,8 @@ type Db = ReturnType<typeof connect>["db"];
 
 export const MAX_ATTEMPTS = 3;
 export const STALE_MINUTES = 10;
+/** 再試行までの待ち（秒）。試行回数をかける（1回目の失敗の後は30秒、2回目の後は60秒）。 */
+export const RETRY_DELAY_SEC = 30;
 const INSERT_CHUNK = 2000;
 /** 進み具合を DB に書く間隔の下限。 */
 export const PROGRESS_WRITE_MS = 2000;
@@ -47,7 +49,9 @@ class StaleClaim extends Error {}
 export async function claimJob(db: Db, maxRunning = maxConcurrentFetch()) {
   const rows = await db.execute(sql`
     update jobs set status = 'running', attempts = attempts + 1, updated_at = now()
-    where id = (select id from jobs where status = 'queued' order by created_at, id limit 1 for update skip locked)
+    where id = (
+      select id from jobs where status = 'queued' and updated_at <= now()
+      order by created_at, id limit 1 for update skip locked)
       and (select count(*) from jobs where status = 'running') < ${maxRunning}
     returning id, url, attempts, result`);
   return (rows[0] as ClaimedJob | undefined) ?? null;
@@ -88,11 +92,22 @@ async function fail(db: Db, job: ClaimedJob, code: FailureCode, message: string)
 }
 
 /** 再試行できる失敗で、試行が残っていれば queued に戻す（続きの位置は残す）。戻したら true。 */
-async function retryLater(db: Db, job: ClaimedJob) {
-  if (job.attempts >= MAX_ATTEMPTS) return false;
+/**
+ * 再試行できる失敗で、試行が残っていれば queued に戻す（続きの位置は残す）。戻したら true。
+ * すぐ拾い直すと同じ一時的な失敗に当たるので、RETRY_DELAY_SEC × 試行回数のあいだは拾わない（updated_at を先にする）。
+ * この試行で続きの位置が進んだ（保存できた）ときは、試行に数えない。長い配信で、離れた所で何回か切れても
+ * 保存済みを捨てないため。進んだ分だけ終わりに近づくので、いつまでも繰り返すことはない。
+ */
+async function retryLater(db: Db, job: ClaimedJob, progressed: boolean) {
+  if (job.attempts >= MAX_ATTEMPTS && !progressed) return false;
   await db
     .update(jobs)
-    .set({ status: "queued", result: keepResume, updatedAt: new Date() })
+    .set({
+      status: "queued",
+      result: keepResume,
+      attempts: progressed ? job.attempts - 1 : job.attempts,
+      updatedAt: sql`now() + make_interval(secs => ${RETRY_DELAY_SEC * job.attempts})`,
+    })
     .where(stillMine(job));
   return true;
 }
@@ -183,6 +198,8 @@ export function progressWriter(db: Db, job: ClaimedJob, minIntervalMs = PROGRESS
  */
 export async function runJob(db: Db, job: ClaimedJob, fetchChat: ChatFetcher) {
   const progress = progressWriter(db, job);
+  // この試行で続きの位置を保存できたか（再試行の数え方に使う）。
+  let progressed = false;
   try {
     const parsed = parseVideoUrl(job.url);
     if (!parsed.ok) throw new JobFailure("invalid_url");
@@ -195,16 +212,20 @@ export async function runJob(db: Db, job: ClaimedJob, fetchChat: ChatFetcher) {
       cursor: prev?.cursor ?? null,
       // コメントと続きの位置を同じトランザクションで書くので、どこで落ちても二重・抜けにならない。
       save: (messages, cursor) =>
-        db.transaction(async (tx) => {
-          await lockMine(
-            tx,
-            job,
-            sql`coalesce(${jobs.result}, '{}'::jsonb) || ${JSON.stringify({ resume: { cursor } })}::jsonb`,
-          );
-          const rows = toRows(job.id, inVideo(messages));
-          for (let i = 0; i < rows.length; i += INSERT_CHUNK)
-            await tx.insert(chatMessages).values(rows.slice(i, i + INSERT_CHUNK));
-        }),
+        db
+          .transaction(async (tx) => {
+            await lockMine(
+              tx,
+              job,
+              sql`coalesce(${jobs.result}, '{}'::jsonb) || ${JSON.stringify({ resume: { cursor } })}::jsonb`,
+            );
+            const rows = toRows(job.id, inVideo(messages));
+            for (let i = 0; i < rows.length; i += INSERT_CHUNK)
+              await tx.insert(chatMessages).values(rows.slice(i, i + INSERT_CHUNK));
+          })
+          .then(() => {
+            progressed = true;
+          }),
     };
     const fetched = await fetchChat(
       parsed.videoId,
@@ -269,7 +290,7 @@ export async function runJob(db: Db, job: ClaimedJob, fetchChat: ChatFetcher) {
     await progress.settle();
     if (e instanceof StaleClaim) return;
     if (e instanceof JobFailure) {
-      if (e.retryable && (await retryLater(db, job))) return;
+      if (e.retryable && (await retryLater(db, job, progressed))) return;
       await fail(db, job, e.code, e.message);
     } else
       await fail(

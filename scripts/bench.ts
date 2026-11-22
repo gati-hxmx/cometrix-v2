@@ -8,7 +8,7 @@ import { GET as getMessages } from "../src/app/api/jobs/[id]/messages/route";
 import { connect } from "../src/db/client";
 import { jobs } from "../src/db/schema";
 import type { ChatMessage } from "../src/lib/buckets";
-import { claimJob, runJob } from "../src/worker/process";
+import { runJob } from "../src/worker/process";
 
 const COMMENTS = Number(process.env.BENCH_COMMENTS ?? 100_000);
 const HOURS = 10;
@@ -54,20 +54,32 @@ async function time(fn: () => Promise<unknown>): Promise<number> {
 
 const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 
+/** 手元・compose の DB だけで動かす（本番の DB にマイグレーションと仮データを入れないため）。 */
+function assertLocal(url = process.env.DATABASE_URL ?? "") {
+  const host = new URL(url).hostname;
+  if (!["localhost", "127.0.0.1", "::1", "db"].includes(host) && process.env.BENCH_ALLOW_REMOTE !== "1")
+    throw new Error(`手元の DB ではありません（${host}）。BENCH_ALLOW_REMOTE=1 で強制できます`);
+}
+
 async function main() {
+  assertLocal();
   const { sql, db } = connect();
   await migrate(db, { migrationsFolder: "./drizzle" });
   const videoId = `bench${randomBytes(3).toString("hex")}`;
+  // ワーカーに拾われないよう、running（試行1回目）として作り、自分で処理する。
   const [job] = await db
     .insert(jobs)
-    // 普段のジョブより先に拾われるよう、作成日時を古くする（bench のあいだワーカーは止めておく）。
-    .values({ url: `https://www.youtube.com/watch?v=${videoId}`, videoId, createdAt: new Date(0) })
+    .values({
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+      videoId,
+      status: "running",
+      attempts: 1,
+    })
     .returning();
   const rows: { name: string; ms: number; target: number }[] = [];
   try {
     const messages = benchMessages();
-    const claimed = await claimJob(db, 1_000);
-    if (!claimed || claimed.id !== job.id) throw new Error("bench のジョブを拾えませんでした");
+    const claimed = { id: job.id, url: job.url, attempts: 1, result: null };
     const saveMs = await time(() => runJob(db, claimed, async () => ({ title: "bench", messages })));
     const [done] = await db.select().from(jobs).where(eq(jobs.id, job.id));
     if (done.status !== "done") throw new Error(`保存に失敗しました: ${JSON.stringify(done.error)}`);

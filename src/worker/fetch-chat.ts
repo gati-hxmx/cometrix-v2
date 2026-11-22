@@ -155,6 +155,8 @@ export function makeYtDlpFetcher(opts: YtDlpOptions = {}): ChatFetcher {
               } else if (running() && Date.now() - lastGrow >= stallMs) {
                 stalled = true;
                 child.kill("SIGTERM");
+                // 止まらなければ10秒後に強く止める。
+                setTimeout(() => running() && child.kill("SIGKILL"), 10_000).unref();
                 return;
               }
               if (!onProgress) return;

@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql as q } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
@@ -9,7 +9,7 @@ import { bucketize, type ChatMessage } from "../src/lib/buckets";
 import { enqueue } from "../src/lib/jobs";
 import { JobFailure } from "../src/worker/errors";
 import type { ChatFetcher } from "../src/worker/fetch-chat";
-import { MAX_ATTEMPTS, processNext, reapStale } from "../src/worker/process";
+import { claimJob, MAX_ATTEMPTS, processNext, reapStale, runJob } from "../src/worker/process";
 import { fetchTwitchComments, SAVE_EVERY } from "../src/worker/twitch-chat";
 
 // 取得の途中で失敗しても、保存済みの続きから取り直せること（#47）。
@@ -71,6 +71,14 @@ describe.skipIf(!url)("取得の再開（Postgres）", () => {
     await sql.end();
   });
 
+  /** 再試行の待ち（RETRY_DELAY_SEC）を飛ばして、queued のジョブをすぐ拾えるようにする。 */
+  async function due() {
+    await db
+      .update(jobs)
+      .set({ updatedAt: q`now() - interval '1 second'` })
+      .where(eq(jobs.status, "queued"));
+  }
+
   async function saved(jobId: string) {
     return db
       .select({
@@ -93,6 +101,11 @@ describe.skipIf(!url)("取得の再開（Postgres）", () => {
     expect(mid.status).toBe("queued");
     expect(mid.result).toEqual({ resume: { cursor: "c4" } });
     expect(await saved(res.id)).toHaveLength(SAVE_EVERY);
+    // 続きを保存できた試行は数えない。すぐには拾わず、待ってから拾う。
+    expect(mid.attempts).toBe(0);
+    expect(mid.updatedAt.getTime()).toBeGreaterThan(Date.now() + 20_000);
+    expect(await processNext(db, twitchFetcher(twitchFetch(null).f))).toBe(false);
+    await due();
 
     const second = twitchFetch(null);
     await processNext(db, twitchFetcher(second.f));
@@ -105,7 +118,7 @@ describe.skipIf(!url)("取得の再開（Postgres）", () => {
     expect(rows).toEqual(whole);
     const [job] = await db.select().from(jobs).where(eq(jobs.id, res.id));
     expect(job.status).toBe("done");
-    expect(job.attempts).toBe(2);
+    expect(job.attempts).toBe(1);
     expect(job.result).toMatchObject({ totalComments: PER_PAGE * PAGES });
     const buckets = await db
       .select({ startSec: chatBuckets.startSec, count: chatBuckets.count })
@@ -118,9 +131,13 @@ describe.skipIf(!url)("取得の再開（Postgres）", () => {
   test("再試行が上限に達したら failed になり、保存途中のコメントは消える", async () => {
     const res = await enqueue(db, TWITCH);
     if (!res.ok) throw new Error("enqueue failed");
-    // 6回目の呼び出しから先は、ずっと通信が切れたまま。
+    // 6回目の呼び出しから先は、ずっと通信が切れたまま。1回目は途中まで保存できたので数えず、
+    // そのあと何も進まない試行が MAX_ATTEMPTS 回で failed になる。
     const down = twitchFetch(6);
-    for (let i = 0; i < MAX_ATTEMPTS; i++) await processNext(db, twitchFetcher(down.f));
+    for (let i = 0; i < MAX_ATTEMPTS + 1; i++) {
+      await due();
+      await processNext(db, twitchFetcher(down.f));
+    }
     const [job] = await db.select().from(jobs).where(eq(jobs.id, res.id));
     expect(job.status).toBe("failed");
     expect(job.result).toBeNull();
@@ -150,6 +167,7 @@ describe.skipIf(!url)("取得の再開（Postgres）", () => {
     await processNext(db, async () => {
       throw new JobFailure("fetch_failed", "途中で切れた", true);
     });
+    await due();
     await processNext(db, async () => ({ title: "t", messages: many }));
     const [job] = await db.select().from(jobs).where(eq(jobs.id, res.id));
     expect(job.status).toBe("done");
@@ -192,5 +210,30 @@ describe.skipIf(!url)("取得の再開（Postgres）", () => {
     expect(await saved(a.id)).toHaveLength(1);
     expect(rb.status).toBe("failed");
     expect(await saved(b.id)).toHaveLength(0);
+  });
+
+  test("回収されて別のワーカーが拾った後は、元のワーカーの保存は書かれない", async () => {
+    const res = await enqueue(db, TWITCH);
+    if (!res.ok) throw new Error("enqueue failed");
+    // 続きの位置があるジョブにして、元のワーカーが消す処理を飛ばし、保存まで進むようにする。
+    await db
+      .update(jobs)
+      .set({ result: { resume: { cursor: "c1" } } })
+      .where(eq(jobs.id, res.id));
+    const stale = await claimJob(db);
+    if (!stale) throw new Error("claim failed");
+    await db.update(jobs).set({ status: "queued" }).where(eq(jobs.id, res.id));
+    await due();
+    const fresh = await claimJob(db);
+    if (!fresh) throw new Error("claim failed");
+    await runJob(db, stale, async (_i, _u, _p, _o, resume) => {
+      await resume?.save([{ offsetMs: 0, author: "old", text: "古い" }], "c9");
+      return { title: "古い", messages: [], saved: true };
+    });
+    const [job] = await db.select().from(jobs).where(eq(jobs.id, res.id));
+    expect(job.status).toBe("running");
+    expect(job.attempts).toBe(fresh.attempts);
+    expect(job.result).toEqual({ resume: { cursor: "c1" } });
+    expect(await saved(res.id)).toHaveLength(0);
   });
 });
