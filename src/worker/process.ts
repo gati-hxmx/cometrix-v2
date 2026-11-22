@@ -108,7 +108,7 @@ export async function runJob(db: Db, job: ClaimedJob, fetchChat: ChatFetcher) {
     const parsed = parseVideoUrl(job.url);
     if (!parsed.ok) throw new JobFailure("invalid_url");
     let lastProgress: FetchProgress | null = null;
-    const { title, messages } = await fetchChat(
+    const { title, messages, clips } = await fetchChat(
       parsed.videoId,
       parsed.url,
       parsed.platform,
@@ -159,6 +159,7 @@ export async function runJob(db: Db, job: ClaimedJob, fetchChat: ChatFetcher) {
             platform: parsed.platform,
             videoId: parsed.videoId,
             title,
+            clips: clips ?? [],
             totalComments: valid.length,
             lastBucketSec: buckets[buckets.length - 1].startSec,
           },
