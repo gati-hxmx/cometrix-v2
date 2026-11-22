@@ -4,8 +4,8 @@ import { pickInterval } from "./interval";
 import { processNext, reapStale } from "./process";
 import { fetchWithTwitch } from "./twitch-chat";
 
-const fetchChat: ChatFetcher = (videoId, url, platform) =>
-  (platform === "twitch" ? fetchWithTwitch : fetchWithYtDlp)(videoId, url, platform);
+const fetchChat: ChatFetcher = (videoId, url, platform, onProgress) =>
+  (platform === "twitch" ? fetchWithTwitch : fetchWithYtDlp)(videoId, url, platform, onProgress);
 
 // ジョブ表を見に行き、queued を1件ずつ処理する。待ちがなければ間隔を延ばす。
 const { db } = connect();

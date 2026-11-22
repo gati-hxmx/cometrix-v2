@@ -28,6 +28,7 @@ export const jobs = pgTable(
       .notNull()
       .default("queued"),
     attempts: integer("attempts").notNull().default(0),
+    // done のとき集計結果。running のあいだは取得の進み具合 { progress }（#43、src/lib/progress.ts）。
     result: jsonb("result"),
     // 失敗のとき { code, message }
     error: jsonb("error"),
