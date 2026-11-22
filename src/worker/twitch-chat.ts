@@ -2,7 +2,7 @@ import type { ChatMessage } from "../lib/buckets";
 import { type Clip, isSafeClipUrl } from "../lib/clips";
 import type { FetchProgress } from "../lib/progress";
 import { JobFailure } from "./errors";
-import type { ChatFetcher } from "./fetch-chat";
+import type { ChatFetcher, FetchResume } from "./fetch-chat";
 
 // Twitch には VOD のチャットを返す公式 API がないので、Twitch の Web が使う GraphQL を使う（旧版と同じ）。
 // Client-ID は Web が使う公開の値で、秘密ではない。仕様が変わると動かなくなる可能性がある。
@@ -11,7 +11,10 @@ const GQL_CLIENT_ID = "kimne78kx3ncx6brgo4mv6wki5h1ko";
 const COMMENTS_HASH = "b70a3591ff0f4e0313d126c6a1502d79a1c02baebb288227c582044aa76adf6a";
 const MAX_PAGES = 5000;
 const REQUEST_TIMEOUT_MS = 30_000;
-const TOTAL_TIMEOUT_MS = 10 * 60 * 1000;
+// 全体の打ち切りは暴走の歯止めだけ。ページごとの打ち切り（REQUEST_TIMEOUT_MS）で止まった取得は見つける（#46）。
+const TOTAL_TIMEOUT_MS = 3 * 60 * 60 * 1000;
+/** 取得しながら保存するとき、この件数たまるごとに保存して続きの位置を残す（#47）。 */
+export const SAVE_EVERY = 2000;
 
 export type FetchLike = typeof fetch;
 
@@ -72,26 +75,33 @@ async function postJson(f: FetchLike, body: unknown, signal: AbortSignal): Promi
     throw new JobFailure(
       "fetch_failed",
       (e as Error).name === "TimeoutError" ? "タイムアウトしました" : "Twitch に接続できません",
+      true,
     );
   }
   if (res.status === 429 || res.status === 403) throw new JobFailure("fetch_blocked");
-  if (!res.ok) throw new JobFailure("fetch_failed", `Twitch の応答エラー ${res.status}`);
+  if (!res.ok)
+    throw new JobFailure("fetch_failed", `Twitch の応答エラー ${res.status}`, res.status >= 500);
   try {
     return (await res.json()) as CommentsPage;
   } catch {
-    throw new JobFailure("fetch_failed", "Twitch の応答を読めません");
+    throw new JobFailure("fetch_failed", "Twitch の応答を読めません", true);
   }
 }
 
-/** VOD のコメントを先頭から最後まで集める。 */
+/**
+ * VOD のコメントを先頭から最後まで集める。
+ * resume があるときは、その cursor の続きから取り、SAVE_EVERY 件ごとに resume.save で保存して空の配列を返す（#47）。
+ * 保存はコメントと「次に取る位置」を一緒に渡すので、途中で失敗しても、保存済みの続きから取り直せる。
+ */
 export async function fetchTwitchComments(
   videoId: string,
   f: FetchLike = fetch,
   onPage?: (lastOffsetSec: number) => void,
+  resume?: FetchResume,
 ): Promise<ChatMessage[]> {
   const signal = AbortSignal.timeout(TOTAL_TIMEOUT_MS);
   const all: ChatMessage[] = [];
-  let cursor: string | null = null;
+  let cursor: string | null = resume?.cursor ?? null;
   for (let i = 0; i < MAX_PAGES; i++) {
     const variables: Record<string, unknown> = cursor
       ? { videoID: videoId, cursor }
@@ -106,12 +116,15 @@ export async function fetchTwitchComments(
       signal,
     );
     if (page.errors?.length && !page.data)
-      throw new JobFailure("fetch_failed", "Twitch がエラーを返しました");
+      throw new JobFailure("fetch_failed", "Twitch がエラーを返しました", true);
     const parsed = parseCommentsPage(page);
     if (!parsed.found) throw new JobFailure("video_unavailable");
     all.push(...parsed.messages);
     const last = parsed.messages[parsed.messages.length - 1];
     if (last) onPage?.(Math.floor(last.offsetMs / 1000));
+    if (resume && (all.length >= SAVE_EVERY || !parsed.next)) {
+      await resume.save(all.splice(0), parsed.next);
+    }
     if (!parsed.next) return all;
     cursor = parsed.next;
   }
@@ -262,7 +275,13 @@ export async function fetchTwitchLength(
   }
 }
 
-export const fetchWithTwitch: ChatFetcher = async (videoId, _url, _platform, onProgress) => {
+export const fetchWithTwitch: ChatFetcher = async (
+  videoId,
+  _url,
+  _platform,
+  onProgress,
+  resume,
+) => {
   // 長さは取得と並べて取り、分かった時点から ％ に使う。
   let durationSec: number | null = null;
   if (onProgress)
@@ -272,8 +291,13 @@ export const fetchWithTwitch: ChatFetcher = async (videoId, _url, _platform, onP
   const report = (fetchedSec: number) =>
     onProgress?.({ stage: "fetching", fetchedSec, durationSec } satisfies FetchProgress);
   const [messages, info] = await Promise.all([
-    fetchTwitchComments(videoId, fetch, report),
+    fetchTwitchComments(videoId, fetch, report, resume),
     fetchTwitchInfo(videoId),
   ]);
-  return { title: info.title ?? `Twitch VOD ${videoId}`, messages, clips: info.clips };
+  return {
+    title: info.title ?? `Twitch VOD ${videoId}`,
+    messages,
+    clips: info.clips,
+    saved: resume !== undefined,
+  };
 };
