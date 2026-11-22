@@ -58,3 +58,15 @@ describe("indexAtX（指でなぞった位置の棒）", () => {
     expect(indexAtX(10, 0, 3)).toBe(-1);
   });
 });
+
+test("人数（#55）は、まとめた区間の中でいちばん多い数にする（足すと同じ人を何度も数える）", () => {
+  const input = [3, 5, 2, 4].map((count, i) => ({ startSec: i * 30, count }));
+  expect(groupBuckets(input, 2, "max")).toEqual([
+    { startSec: 0, count: 5 },
+    { startSec: 60, count: 4 },
+  ]);
+  expect(groupBuckets(input, 2)).toEqual([
+    { startSec: 0, count: 8 },
+    { startSec: 60, count: 6 },
+  ]);
+});

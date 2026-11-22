@@ -1,13 +1,24 @@
 export type Bucket = { startSec: number; count: number };
 
-/** 棒が max 本を超えるとき、連続する区間をまとめる（コメント数は合計、開始は先頭の区間）。 */
-export function groupBuckets(buckets: Bucket[], max: number): Bucket[] {
+/**
+ * 棒が max 本を超えるとき、連続する区間をまとめる（開始は先頭の区間）。
+ * コメント数は合計。人数（#55）は足すと同じ人を何度も数えるので、まとめた中で30秒あたりいちばん多い数にする（"max"）。
+ */
+export function groupBuckets(
+  buckets: Bucket[],
+  max: number,
+  combine: "sum" | "max" = "sum",
+): Bucket[] {
   if (buckets.length <= max) return buckets;
   const size = Math.ceil(buckets.length / max);
   const out: Bucket[] = [];
   for (let i = 0; i < buckets.length; i += size) {
     const chunk = buckets.slice(i, i + size);
-    out.push({ startSec: chunk[0].startSec, count: chunk.reduce((s, x) => s + x.count, 0) });
+    const count =
+      combine === "max"
+        ? Math.max(...chunk.map((x) => x.count))
+        : chunk.reduce((s, x) => s + x.count, 0);
+    out.push({ startSec: chunk[0].startSec, count });
   }
   return out;
 }

@@ -47,6 +47,7 @@ type Tab = (typeof TABS)[number]["key"];
 const SERIES = [
   { key: "all", name: "すべて" },
   { key: "laugh", name: "笑い" },
+  { key: "users", name: "人数" },
 ] as const;
 const SPAM = [
   { key: "on", name: "スパム除外" },
@@ -162,8 +163,10 @@ export function AnalysisView({ id }: { id: string }) {
   const [picked, setPicked] = useState<{ start: number; end: number; n: number } | null>(null);
   const [mark, setMark] = useState<{ start: number; end: number } | null>(null);
   const [filtered, setFiltered] = useState<Bucket[] | null>(null);
-  const [series, setSeries] = useState<"all" | "laugh">("all");
+  const [series, setSeries] = useState<"all" | "laugh" | "users">("all");
   const laugh = series === "laugh";
+  // コメントした人の数（同じ人の連投は1人。#55）。
+  const users = series === "users";
   const [terms, setTerms] = useState<string[]>([]);
   // 言葉ごとの数（読み込めたものだけ）。言葉を外しても、同じ言葉を足し直したときに使い回す。
   const [termData, setTermData] = useState<Record<string, Bucket[]>>({});
@@ -175,7 +178,7 @@ export function AnalysisView({ id }: { id: string }) {
   const isDone = state.kind === "job" && state.job.status === "done";
 
   // 絞り込み中・笑いを選んだときは、一致したコメントの数でグラフを描き直す。
-  const recount = filtering || laugh || spam;
+  const recount = filtering || laugh || spam || users;
   useEffect(() => {
     if (!recount || !isDone) {
       setFiltered(null);
@@ -187,6 +190,7 @@ export function AnalysisView({ id }: { id: string }) {
     const p = filterParams(filter);
     if (laugh) p.set("laugh", "1");
     if (spam) p.set("spam", "1");
+    if (users) p.set("users", "1");
     fetch(`/api/jobs/${id}/buckets?${p}`, { cache: "no-store" })
       .then((r) => {
         if (!r.ok) throw new Error(String(r.status));
@@ -199,15 +203,17 @@ export function AnalysisView({ id }: { id: string }) {
           setToast(
             laugh
               ? "笑いのグラフを読み込めませんでした。"
-              : filtering
-                ? "絞り込んだグラフを読み込めませんでした。"
-                : "グラフを読み込めませんでした。",
+              : users
+                ? "人数のグラフを読み込めませんでした。"
+                : filtering
+                  ? "絞り込んだグラフを読み込めませんでした。"
+                  : "グラフを読み込めませんでした。",
           ),
       );
     return () => {
       stale = true;
     };
-  }, [filter, recount, laugh, spam, isDone, id, filtering]);
+  }, [filter, recount, laugh, spam, users, isDone, id, filtering]);
 
   // 重ねる言葉ごとに、その言葉を含むコメントの数を読む（#53）。読み込み中の言葉は二重に読まない。
   const loading = useRef(new Set<string>());
@@ -446,7 +452,11 @@ export function AnalysisView({ id }: { id: string }) {
                 }}
               >
                 <h2 style={{ fontSize: 16, margin: 0 }}>
-                  {laugh && filtered !== null ? "笑いの数（30秒ごと）" : "コメント数（30秒ごと）"}
+                  {users && filtered !== null
+                    ? "コメントした人数（30秒ごと）"
+                    : laugh && filtered !== null
+                      ? "笑いの数（30秒ごと）"
+                      : "コメント数（30秒ごと）"}
                 </h2>
                 {done?.result && (
                   <div
@@ -465,7 +475,7 @@ export function AnalysisView({ id }: { id: string }) {
                       onChange={setSpamMode}
                     />
                     <Segmented
-                      label="グラフに出すコメント"
+                      label="グラフに出す数"
                       options={SERIES}
                       value={series}
                       onChange={setSeries}
@@ -473,7 +483,8 @@ export function AnalysisView({ id }: { id: string }) {
                   </div>
                 )}
               </div>
-              {recount && matched !== null && (
+              {/* 人数は区間ごとに数えるので足しても全体の人数にならない。合計は出さない。 */}
+              {recount && !users && matched !== null && (
                 <p
                   aria-live="polite"
                   style={{ margin: "0 0 8px", color: "var(--muted)", fontSize: 13 }}
@@ -492,6 +503,7 @@ export function AnalysisView({ id }: { id: string }) {
                   getTime={getTime}
                   filtered={filtering && filtered !== null}
                   laugh={laugh && filtered !== null}
+                  users={users && filtered !== null}
                   pickRange={pickMode && tab === "clip"}
                   onPickRange={(a, b) =>
                     setPicked((p) => ({ start: a, end: b, n: (p?.n ?? 0) + 1 }))
@@ -599,6 +611,7 @@ export function AnalysisView({ id }: { id: string }) {
                 <TocPanel
                   buckets={recount ? filtered : state.kind === "job" ? state.buckets : null}
                   laugh={laugh}
+                  users={users}
                   getTime={getTime}
                   onSeek={seekPeak}
                 />
