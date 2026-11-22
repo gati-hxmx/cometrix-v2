@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   addClip,
   CLIP_MAX,
@@ -15,9 +15,9 @@ import {
   serializeClips,
   updateClip,
 } from "../lib/clip-ranges";
+import { Toast } from "./Toast";
 
 const SAVE_MS = 500;
-const EDIT_MS = 600;
 const btn = {
   minHeight: 44,
   padding: "0 14px",
@@ -83,65 +83,49 @@ function TimeField({
   );
 }
 
-/** 一覧の1行。入力が止まってから（欄を離れたときも）1回だけ、正しい値を親へ渡す。 */
+/**
+ * 一覧の1行。ふだんは「▶ 名前・始点〜終点（長さ）」と［直す］［削除］だけを出す。
+ * ［直す］で開いた1行だけに名前・始点・終点の欄を出し、変えても保存せず、
+ * ［この範囲で保存］で1回だけ保存する（18項目の14）。［キャンセル］で元に戻して閉じる。
+ */
 function ClipRow({
   clip,
   index,
+  editing,
   getTime,
   onSeek,
-  onChange,
+  onEdit,
+  onSave,
   onRemove,
 }: {
   clip: Clip;
   index: number;
+  editing: boolean;
   getTime: () => number;
   onSeek: (sec: number) => void;
-  onChange: (patch: Partial<Omit<Clip, "id">>) => void;
+  onEdit: (open: boolean) => void;
+  onSave: (patch: Omit<Clip, "id">) => void;
   onRemove: () => void;
 }) {
   const [name, setName] = useState(clip.name);
   const [start, setStart] = useState(formatClock(clip.start));
   const [end, setEnd] = useState(formatClock(clip.end));
-  const latest = useRef({ name, start, end, clip, onChange });
-  latest.current = { name, start, end, clip, onChange };
-  const dirty = useRef(false);
 
-  // 外から変わったとき（並び替え・元に戻す）は、入力中でなければ表示を合わせる。
+  // 開くたびに、保存済みの値から始める。
   useEffect(() => {
-    if (dirty.current) return;
+    if (!editing) return;
     setName(clip.name);
     setStart(formatClock(clip.start));
     setEnd(formatClock(clip.end));
-  }, [clip.name, clip.start, clip.end]);
+  }, [editing, clip.name, clip.start, clip.end]);
 
-  const error = rangeError(parseClock(start), parseClock(end));
-
-  const commit = () => {
-    const l = latest.current;
-    if (!dirty.current) return;
-    dirty.current = false;
-    const s = parseClock(l.start);
-    const e = parseClock(l.end);
-    if (rangeError(s, e) === null && s !== null && e !== null)
-      l.onChange({ name: l.name, start: s, end: e });
-    else l.onChange({ name: l.name });
-  };
-  // 入力のたびに予約し、止まったら保存する。
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 入力値が変わるたびに予約し直す。commit は ref から最新の値を読む
-  useEffect(() => {
-    if (!dirty.current) return;
-    const t = setTimeout(commit, EDIT_MS);
-    return () => clearTimeout(t);
-  }, [name, start, end]);
-  // 行を離れる（消える）ときも取りこぼさない。
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 消えるときに1回だけ。commit は ref から最新の値を読む
-  useEffect(() => () => commit(), []);
-
-  const edit = (set: (v: string) => void) => (v: string) => {
-    dirty.current = true;
-    set(v);
-  };
-  const now = () => Math.floor(getTime());
+  const s = parseClock(start);
+  const e = parseClock(end);
+  const error = rangeError(s, e);
+  const changed = name !== clip.name || s !== clip.start || e !== clip.end;
+  const canSave = error === null && changed;
+  const now = () => formatClock(Math.floor(getTime()));
+  const label = clipLabel(clip, index);
 
   return (
     <li
@@ -149,7 +133,7 @@ function ClipRow({
         listStyle: "none",
         border: "1px solid var(--line)",
         borderRadius: "var(--radius)",
-        padding: 12,
+        padding: 8,
         display: "flex",
         flexDirection: "column",
         gap: 8,
@@ -159,57 +143,89 @@ function ClipRow({
         <button
           type="button"
           onClick={() => onSeek(clip.start)}
-          aria-label={`${clipLabel(clip, index)} を始点から再生`}
+          aria-label={`${label} を始点から再生`}
           style={{
             ...btn,
             flex: "1 1 0",
             minWidth: 0,
+            border: 0,
             textAlign: "left",
-            fontWeight: 700,
-            color: "var(--accent-dark)",
             overflowWrap: "anywhere",
           }}
         >
-          ▶ {clipLabel(clip, index)}・{formatClock(clip.start)}〜{formatClock(clip.end)}（
-          {formatClock(clip.end - clip.start)}）
+          <span style={{ fontWeight: 700, color: "var(--accent-dark)" }}>▶ {label}</span>
+          <span style={{ ...small, display: "block" }}>
+            {formatClock(clip.start)}〜{formatClock(clip.end)}（{formatClock(clip.end - clip.start)}
+            ）
+          </span>
         </button>
-        <button
-          type="button"
-          style={btn}
-          onClick={onRemove}
-          aria-label={`${clipLabel(clip, index)} を削除`}
-        >
+        {!editing && (
+          <button
+            type="button"
+            style={btn}
+            onClick={() => onEdit(true)}
+            aria-label={`${label} を直す`}
+          >
+            直す
+          </button>
+        )}
+        <button type="button" style={btn} onClick={onRemove} aria-label={`${label} を削除`}>
           削除
         </button>
       </div>
-      <label style={{ display: "block" }}>
-        <span style={small}>名前</span>
-        <input
-          value={name}
-          maxLength={CLIP_NAME_MAX}
-          placeholder={`範囲 ${index + 1}`}
-          onChange={(e) => edit(setName)(e.target.value)}
-          onBlur={commit}
-          style={field}
-        />
-      </label>
-      <TimeField
-        label="始点"
-        value={start}
-        onChange={edit(setStart)}
-        onBlur={commit}
-        onNow={() => edit(setStart)(formatClock(now()))}
-        nowLabel="今の位置"
-      />
-      <TimeField
-        label="終点"
-        value={end}
-        onChange={edit(setEnd)}
-        onBlur={commit}
-        onNow={() => edit(setEnd)(formatClock(now()))}
-        nowLabel="今の位置"
-      />
-      {error && <p style={errText}>⚠ {error}（保存されていません）</p>}
+      {editing && (
+        <>
+          <label style={{ display: "block" }}>
+            <span style={small}>名前</span>
+            <input
+              value={name}
+              maxLength={CLIP_NAME_MAX}
+              placeholder={`範囲 ${index + 1}`}
+              onChange={(ev) => setName(ev.target.value)}
+              style={field}
+            />
+          </label>
+          <TimeField
+            label="始点"
+            value={start}
+            onChange={setStart}
+            onNow={() => setStart(now())}
+            nowLabel="今の位置"
+          />
+          <TimeField
+            label="終点"
+            value={end}
+            onChange={setEnd}
+            onNow={() => setEnd(now())}
+            nowLabel="今の位置"
+          />
+          {error && <p style={errText}>{error}</p>}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              disabled={!canSave}
+              onClick={() => {
+                if (!canSave || s === null || e === null) return;
+                onSave({ name, start: s, end: e });
+                onEdit(false);
+              }}
+              style={{
+                ...btn,
+                fontWeight: 700,
+                background: canSave ? "var(--accent)" : "var(--surface)",
+                color: canSave ? "var(--on-accent)" : "var(--muted)",
+                border: canSave ? "1px solid var(--accent)" : "1px solid var(--line)",
+                cursor: canSave ? "pointer" : "not-allowed",
+              }}
+            >
+              この範囲で保存
+            </button>
+            <button type="button" style={btn} onClick={() => onEdit(false)}>
+              キャンセル
+            </button>
+          </div>
+        </>
+      )}
     </li>
   );
 }
@@ -241,6 +257,9 @@ export function ClipPanel({
   const [end, setEnd] = useState("");
   const [pick, setPick] = useState(false);
   const [undo, setUndo] = useState<Clip | null>(null);
+  const [restored, setRestored] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const closeRestored = useCallback(() => setRestored(false), []);
   const warned = useRef(false);
 
   useEffect(() => {
@@ -311,6 +330,8 @@ export function ClipPanel({
   };
   const remove = (c: Clip) => {
     setClips((list) => removeClip(list, c.id));
+    if (editingId === c.id) setEditingId(null);
+    setRestored(false);
     setUndo(c);
   };
   const restore = () => {
@@ -318,6 +339,7 @@ export function ClipPanel({
     const next = addClip(clips, undo);
     if (next) setClips(next);
     setUndo(null);
+    setRestored(true);
   };
 
   return (
@@ -373,37 +395,6 @@ export function ClipPanel({
         {clips.length >= CLIP_MAX && <p style={small}>範囲は {CLIP_MAX} 件までです</p>}
       </div>
 
-      {undo && (
-        <div
-          role="status"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 8,
-            padding: "0 4px 0 12px",
-            border: "1px solid var(--line)",
-            borderRadius: "var(--radius)",
-            background: "var(--surface-2)",
-          }}
-        >
-          <span>削除しました</span>
-          <button
-            type="button"
-            onClick={restore}
-            style={{
-              ...btn,
-              border: 0,
-              background: "none",
-              color: "var(--accent-dark)",
-              fontWeight: 700,
-            }}
-          >
-            元に戻す
-          </button>
-        </div>
-      )}
-
       <div style={{ overflowY: "auto", minHeight: 0, flex: 1, maxHeight: "60vh" }}>
         {clips.length === 0 ? (
           <p style={{ margin: 0, color: "var(--muted)" }}>
@@ -416,15 +407,25 @@ export function ClipPanel({
                 key={c.id}
                 clip={c}
                 index={i}
+                editing={editingId === c.id}
                 getTime={getTime}
                 onSeek={onSeek}
-                onChange={(patch) => setClips((list) => updateClip(list, c.id, patch))}
+                onEdit={(open) => setEditingId(open ? c.id : null)}
+                onSave={(patch) => setClips((list) => updateClip(list, c.id, patch))}
                 onRemove={() => remove(c)}
               />
             ))}
           </ul>
         )}
       </div>
+      {/* 削除のお知らせは画面の下に、［元に戻す］つきで ✕ まで残す（基本 8-1）。 */}
+      <Toast
+        kind="done"
+        message={undo ? `${undo.name.trim() || "範囲"}を削除しました` : null}
+        onUndo={restore}
+        onClose={() => setUndo(null)}
+      />
+      <Toast kind="done" message={restored ? "元に戻しました" : null} onClose={closeRestored} />
     </div>
   );
 }
