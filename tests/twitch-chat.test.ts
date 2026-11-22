@@ -66,6 +66,14 @@ describe("Twitch のチャット取得", () => {
     expect(JSON.parse(sent[1].body).variables).toEqual({ videoID: "123", cursor: "c3" });
   });
 
+  test("ページごとに、取得済みの最後の時刻を知らせる（#43）", async () => {
+    const { f } = fakeFetch(pages.map((body) => ({ body })));
+    const seen: number[] = [];
+    await fetchTwitchComments("123", f, (sec) => seen.push(sec));
+    expect(seen.length).toBe(2);
+    expect(seen[seen.length - 1]).toBe(95);
+  });
+
   test("開始前を除いて30秒ごとに集計される", async () => {
     const { f } = fakeFetch(pages.map((body) => ({ body })));
     const buckets = bucketize(await fetchTwitchComments("123", f));

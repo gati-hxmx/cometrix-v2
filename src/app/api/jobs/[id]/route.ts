@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../db/client";
 import { jobs } from "../../../../db/schema";
+import { readProgress } from "../../../../lib/progress";
 
 export const dynamic = "force-dynamic";
 
@@ -21,5 +22,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     .from(jobs)
     .where(eq(jobs.id, id));
   if (!job) return Response.json({ error: { code: "not_found" } }, { status: 404 });
-  return Response.json(job);
+  // 取得中は result に進み具合だけが入っている（#43）。結果は done のときだけ返す。
+  const done = job.status === "done";
+  return Response.json({
+    ...job,
+    result: done ? job.result : null,
+    progress: job.status === "running" ? readProgress(job.result) : null,
+  });
 }

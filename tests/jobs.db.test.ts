@@ -100,6 +100,37 @@ describe.skipIf(!url)("ジョブ処理（Postgres）", () => {
     expect(await db.select().from(jobs)).toHaveLength(0);
   });
 
+  test("取得中は進み具合が result に入り、終わると集計結果に置き換わる（#43）", async () => {
+    const res = await enqueue(db, A);
+    if (!res.ok) throw new Error("enqueue failed");
+    let during: unknown = null;
+    await processNext(db, async (_id, _url, _p, onProgress) => {
+      onProgress?.({ stage: "fetching", fetchedSec: 60, durationSec: 120 });
+      // 書き込みは待たずに走るので、入るまで確かめ直す。
+      for (let i = 0; i < 100 && !during; i++) {
+        const [row] = await db.select().from(jobs).where(eq(jobs.id, res.id));
+        during = row.result;
+        if (!during) await new Promise((r) => setTimeout(r, 20));
+      }
+      return ok();
+    });
+    expect(during).toEqual({ progress: { stage: "fetching", fetchedSec: 60, durationSec: 120 } });
+    const [job] = await db.select().from(jobs).where(eq(jobs.id, res.id));
+    expect(job.status).toBe("done");
+    expect(job.result).toMatchObject({ totalComments: 4 });
+  });
+
+  test("失敗したら進み具合は残さない", async () => {
+    await enqueue(db, A);
+    await processNext(db, async (_id, _url, _p, onProgress) => {
+      onProgress?.({ stage: "fetching", fetchedSec: 60, durationSec: 120 });
+      throw new JobFailure("fetch_blocked");
+    });
+    const [job] = await db.select().from(jobs);
+    expect(job.status).toBe("failed");
+    expect(job.result).toBeNull();
+  });
+
   test("チャットがない・取得失敗は、理由つきの failed になる", async () => {
     await enqueue(db, A);
     await processNext(db, async () => ({ title: "x", messages: [] }));
