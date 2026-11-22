@@ -45,6 +45,7 @@ describe.skipIf(!url)("ジョブ処理（Postgres）", () => {
       title: "テスト配信",
       totalComments: 4,
       lastBucketSec: 90,
+      clips: [],
     });
     const buckets = await db
       .select()
