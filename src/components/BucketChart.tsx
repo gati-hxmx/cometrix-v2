@@ -12,6 +12,7 @@ import {
   valueTicks,
   zoomRange,
 } from "../lib/chart-range";
+import type { Clip } from "../lib/clips";
 
 const MAX_BARS = 120;
 const HEIGHT = 140;
@@ -49,6 +50,7 @@ export function BucketChart({
   getTime,
   filtered = false,
   laugh = false,
+  clips = [],
   lines = [],
 }: {
   buckets: Bucket[];
@@ -59,6 +61,8 @@ export function BucketChart({
   filtered?: boolean;
   /** 笑いのコメントだけの数（#41）。棒を2番目の系列色にし、文言を「笑い」にする。 */
   laugh?: boolean;
+  /** Twitch のクリップ（#60）。グラフの上の帯に印を出し、押すとその時刻から再生する。 */
+  clips?: Clip[];
   /** 重ねる言葉の線（#53）。棒と同じ区間の数。縦軸は右側に別に取る。 */
   lines?: { term: string; color: string; buckets: Bucket[] }[];
 }) {
@@ -68,6 +72,7 @@ export function BucketChart({
   const [hover, setHover] = useState<number | null>(null);
   const [rangeState, setRangeState] = useState<Range | null>(null);
   const [playSec, setPlaySec] = useState(0);
+  const [clipId, setClipId] = useState<string | null>(null);
   const plot = useRef<HTMLDivElement>(null);
   const [plotWidth, setPlotWidth] = useState(0);
   // 指で選んだ直後に来る click で、別の棒を選び直さないための印。
@@ -292,6 +297,8 @@ export function BucketChart({
   const detail = (b: Bucket, i: number) =>
     lines.length > 0 ? `${countText(b.count)}・${termText(i)}` : countText(b.count);
   const label = (b: Bucket, i: number) => `${formatTime(b.startSec)} から ${detail(b, i)}`;
+  const visibleClips = clips.filter((c) => c.offsetSec >= fromSec && c.offsetSec < toSec);
+  const openClip = clips.find((c) => c.id === clipId) ?? null;
   const playX = playSec > 0 && playSec >= fromSec && playSec < toSec ? xOf(playSec) : null;
 
   return (
@@ -471,6 +478,45 @@ export function BucketChart({
             </button>
           ))}
         </div>
+        {visibleClips.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            data-testid="clip-mark"
+            aria-label={`クリップ ${formatTime(c.offsetSec)}${c.title ? ` ${c.title}` : ""}`}
+            aria-pressed={clipId === c.id}
+            onClick={() => {
+              setClipId(c.id);
+              onSeek(c.offsetSec);
+            }}
+            style={{
+              position: "absolute",
+              top: -32,
+              left: `${xOf(c.offsetSec)}%`,
+              width: 44,
+              height: 44,
+              marginLeft: -22,
+              padding: 0,
+              border: 0,
+              background: "transparent",
+              cursor: "pointer",
+              zIndex: 1,
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                display: "block",
+                width: 12,
+                height: 12,
+                margin: "0 auto",
+                transform: "rotate(45deg)",
+                background: "var(--chart-3)",
+                border: `2px solid ${clipId === c.id ? "var(--accent-dark)" : "var(--warn)"}`,
+              }}
+            />
+          </button>
+        ))}
         {lines.length > 0 && (
           <>
             <svg
@@ -580,6 +626,32 @@ export function BucketChart({
           </div>
         )}
       </div>
+      {openClip && (
+        <p
+          aria-live="polite"
+          style={{
+            margin: "0 0 8px",
+            fontSize: 13,
+            color: "var(--muted)",
+            overflowWrap: "anywhere",
+          }}
+        >
+          クリップ：{openClip.title || "（題名なし）"} ・{" "}
+          <a
+            href={openClip.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              minHeight: 44,
+              color: "var(--accent-dark)",
+            }}
+          >
+            クリップのページ
+          </a>
+        </p>
+      )}
       <div
         style={{
           display: "flex",

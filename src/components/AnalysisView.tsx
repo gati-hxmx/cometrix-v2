@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Bucket } from "../lib/chart";
 import { EMPTY_FILTER, filterParams, isFiltering } from "../lib/chat-filter";
+import { cleanClips } from "../lib/clips";
 import { type FetchProgress, progressLabel, progressPercent } from "../lib/progress";
 import { BucketChart } from "./BucketChart";
 import { ChatList, type Filter } from "./ChatList";
@@ -22,7 +23,7 @@ type Job = {
   status: "queued" | "running" | "done" | "failed";
   platform?: "youtube" | "twitch";
   videoId?: string | null;
-  result?: { videoId: string; title: string; totalComments: number } | null;
+  result?: { videoId: string; title: string; totalComments: number; clips?: unknown } | null;
   error?: { code: string; message: string } | null;
   progress?: FetchProgress | null;
   /** done／failed のとき、あと何秒で分析し直せるか（#99）。 */
@@ -465,6 +466,7 @@ export function AnalysisView({ id }: { id: string }) {
                   getTime={getTime}
                   filtered={filtering && filtered !== null}
                   laugh={laugh && filtered !== null}
+                  clips={cleanClips(done?.result?.clips)}
                   lines={lines}
                 />
               ) : (
