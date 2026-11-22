@@ -5,7 +5,7 @@ import { LEAD_OPTIONS, type Lead } from "../lib/lead";
 import { averagePerBucket, parseStepSec, STEP_DEFAULT, seekTarget } from "../lib/playback";
 import { Segmented } from "./Segmented";
 
-const LEAD_CHOICES = LEAD_OPTIONS.map((n) => ({ key: String(n), name: `${n}秒` }));
+const LEAD_CHOICES = LEAD_OPTIONS.map((n) => ({ key: String(n), name: `${n}秒前` }));
 
 const stat = { margin: 0, color: "var(--muted)", fontSize: 13 } as const;
 const btn = {
@@ -126,14 +126,13 @@ export function PlaybackBar({
         </button>
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-        <span style={{ ...stat, color: "var(--text)" }}>棒を押したら</span>
+        <span style={{ ...stat, color: "var(--text)" }}>棒を押したら、山の</span>
         <Segmented
           label="棒を押したとき、何秒前から再生するか"
           options={LEAD_CHOICES}
           value={String(lead)}
           onChange={(k) => onLead(Number(k) as Lead)}
         />
-        <span style={{ ...stat, color: "var(--text)" }}>前から</span>
       </div>
       {step === null && (
         <p id="step-error" style={{ ...stat, color: "var(--danger)", flexBasis: "100%" }}>
