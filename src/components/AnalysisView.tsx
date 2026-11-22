@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Bucket } from "../lib/chart";
 import { EMPTY_FILTER, filterParams, isFiltering } from "../lib/chat-filter";
@@ -9,8 +10,10 @@ import { ChatList, type Filter } from "./ChatList";
 import { KeywordLines } from "./KeywordLines";
 import { MemoPanel } from "./MemoPanel";
 import { PlaybackBar } from "./PlaybackBar";
+import { ReanalyzeButton } from "./ReanalyzeButton";
 import { Segmented } from "./Segmented";
 import { Toast } from "./Toast";
+import { TocPanel } from "./TocPanel";
 import { TwitchPlayer } from "./TwitchPlayer";
 import { UrlForm } from "./UrlForm";
 import { type PlayerHandle, YoutubePlayer } from "./YoutubePlayer";
@@ -22,6 +25,8 @@ type Job = {
   result?: { videoId: string; title: string; totalComments: number } | null;
   error?: { code: string; message: string } | null;
   progress?: FetchProgress | null;
+  /** done／failed のとき、あと何秒で分析し直せるか（#99）。 */
+  retryAfterSec?: number | null;
 };
 type State =
   | { kind: "loading" }
@@ -29,9 +34,19 @@ type State =
   | { kind: "job"; job: Job; buckets: Bucket[] | null };
 
 const POLL_MS = 3000;
+const TABS = [
+  { key: "chat", name: "チャット" },
+  { key: "memo", name: "メモ" },
+  { key: "toc", name: "目次" },
+] as const;
+type Tab = (typeof TABS)[number]["key"];
 const SERIES = [
   { key: "all", name: "すべて" },
   { key: "laugh", name: "笑い" },
+] as const;
+const SPAM = [
+  { key: "on", name: "スパム除外" },
+  { key: "off", name: "除外なし" },
 ] as const;
 const card = {
   background: "var(--surface)",
@@ -130,24 +145,30 @@ function FetchProgressBar({ progress }: { progress: FetchProgress }) {
 export function AnalysisView({ id }: { id: string }) {
   const [state, setState] = useState<State>({ kind: "loading" });
   const [toast, setToast] = useState<string | null>(null);
+  // 分析し直したあとにポーリングを再開するための番号（#99）。
+  const [reload, setReload] = useState(0);
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const router = useRouter();
   const player = useRef<PlayerHandle>(null);
   const playerBox = useRef<HTMLDivElement>(null);
   const closeToast = useCallback(() => setToast(null), []);
   const [filter, setFilter] = useState<Filter>(EMPTY_FILTER);
-  const [tab, setTab] = useState<"chat" | "memo">("chat");
+  const [tab, setTab] = useState<Tab>("chat");
   const [filtered, setFiltered] = useState<Bucket[] | null>(null);
   const [series, setSeries] = useState<"all" | "laugh">("all");
   const laugh = series === "laugh";
   const [terms, setTerms] = useState<string[]>([]);
   // 言葉ごとの数（読み込めたものだけ）。言葉を外しても、同じ言葉を足し直したときに使い回す。
   const [termData, setTermData] = useState<Record<string, Bucket[]>>({});
+  const [spamMode, setSpamMode] = useState<"on" | "off">("on");
+  const spam = spamMode === "on";
   const onFilter = useCallback((f: Filter) => setFilter(f), []);
   const getTime = useCallback(() => player.current?.getTime() ?? 0, []);
   const filtering = isFiltering(filter);
   const isDone = state.kind === "job" && state.job.status === "done";
 
   // 絞り込み中・笑いを選んだときは、一致したコメントの数でグラフを描き直す。
-  const recount = filtering || laugh;
+  const recount = filtering || laugh || spam;
   useEffect(() => {
     if (!recount || !isDone) {
       setFiltered(null);
@@ -158,6 +179,7 @@ export function AnalysisView({ id }: { id: string }) {
     setFiltered(null);
     const p = filterParams(filter);
     if (laugh) p.set("laugh", "1");
+    if (spam) p.set("spam", "1");
     fetch(`/api/jobs/${id}/buckets?${p}`, { cache: "no-store" })
       .then((r) => {
         if (!r.ok) throw new Error(String(r.status));
@@ -170,13 +192,15 @@ export function AnalysisView({ id }: { id: string }) {
           setToast(
             laugh
               ? "笑いのグラフを読み込めませんでした。"
-              : "絞り込んだグラフを読み込めませんでした。",
+              : filtering
+                ? "絞り込んだグラフを読み込めませんでした。"
+                : "グラフを読み込めませんでした。",
           ),
       );
     return () => {
       stale = true;
     };
-  }, [filter, recount, laugh, isDone, id]);
+  }, [filter, recount, laugh, spam, isDone, id, filtering]);
 
   // 重ねる言葉ごとに、その言葉を含むコメントの数を読む（#53）。読み込み中の言葉は二重に読まない。
   const loading = useRef(new Set<string>());
@@ -199,6 +223,7 @@ export function AnalysisView({ id }: { id: string }) {
     }
   }, [terms, termData, isDone, id]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reload は分析し直し後にポーリングを始め直すための合図
   useEffect(() => {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -236,7 +261,31 @@ export function AnalysisView({ id }: { id: string }) {
       stopped = true;
       clearTimeout(timer);
     };
-  }, [id]);
+  }, [id, reload]);
+
+  const reanalyze = useCallback(async () => {
+    setReanalyzing(true);
+    try {
+      const res = await fetch(`/api/jobs/${id}/reanalyze`, { method: "POST" });
+      if (res.ok) {
+        setFiltered(null);
+        setSeries("all");
+        setState({ kind: "loading" });
+        setReload((n) => n + 1);
+        return;
+      }
+      const body = (await res.json().catch(() => null)) as {
+        id?: string;
+        error?: { code?: string; message?: string };
+      } | null;
+      if (body?.error?.code === "duplicate" && body.id) router.push(`/analysis/${body.id}`);
+      else setToast(body?.error?.message ?? "分析し直せませんでした。");
+    } catch {
+      setToast("分析し直せませんでした。通信を確かめて、もう一度お試しください。");
+    } finally {
+      setReanalyzing(false);
+    }
+  }, [id, router]);
 
   const seek = useCallback((sec: number) => {
     player.current?.seek(sec);
@@ -297,6 +346,13 @@ export function AnalysisView({ id }: { id: string }) {
           <Link href="/" style={backLink}>
             別の URL で分析し直す
           </Link>
+          {job.retryAfterSec != null && (
+            <ReanalyzeButton
+              retryAfterSec={job.retryAfterSec}
+              onConfirm={reanalyze}
+              busy={reanalyzing}
+            />
+          )}
         </div>
       )}
 
@@ -327,6 +383,13 @@ export function AnalysisView({ id }: { id: string }) {
                     : "チャットを取得して集計しています。長い配信では数分かかります。"}
               </p>
               {waiting && job?.progress && <FetchProgressBar progress={job.progress} />}
+              {done && done.retryAfterSec != null && (
+                <ReanalyzeButton
+                  retryAfterSec={done.retryAfterSec}
+                  onConfirm={reanalyze}
+                  busy={reanalyzing}
+                />
+              )}
             </section>
 
             <div ref={playerBox} style={{ marginTop: 16, scrollMarginTop: 8 }}>
@@ -359,12 +422,28 @@ export function AnalysisView({ id }: { id: string }) {
                   {laugh && filtered !== null ? "笑いの数（30秒ごと）" : "コメント数（30秒ごと）"}
                 </h2>
                 {done?.result && (
-                  <Segmented
-                    label="グラフに出すコメント"
-                    options={SERIES}
-                    value={series}
-                    onChange={setSeries}
-                  />
+                  <div
+                    style={{
+                      marginLeft: "auto",
+                      display: "flex",
+                      flexWrap: "wrap",
+                      justifyContent: "flex-end",
+                      gap: 8,
+                    }}
+                  >
+                    <Segmented
+                      label="スパム（連投・長いコピペ）"
+                      options={SPAM}
+                      value={spamMode}
+                      onChange={setSpamMode}
+                    />
+                    <Segmented
+                      label="グラフに出すコメント"
+                      options={SERIES}
+                      value={series}
+                      onChange={setSeries}
+                    />
+                  </div>
                 )}
               </div>
               {recount && matched !== null && (
@@ -373,8 +452,9 @@ export function AnalysisView({ id }: { id: string }) {
                   style={{ margin: "0 0 8px", color: "var(--muted)", fontSize: 13 }}
                 >
                   {filtering ? "絞り込み中：" : ""}
-                  {laugh ? "笑い" : "一致"} {matched.toLocaleString("ja-JP")} / 全{" "}
-                  {total.toLocaleString("ja-JP")} 件
+                  {spam ? "スパム除外・" : ""}
+                  {laugh ? "笑い" : filtering ? "一致" : "数えた"} {matched.toLocaleString("ja-JP")}{" "}
+                  / 全 {total.toLocaleString("ja-JP")} 件
                 </p>
               )}
               {state.kind === "job" && state.buckets ? (
@@ -412,10 +492,10 @@ export function AnalysisView({ id }: { id: string }) {
             <aside className="analysis-chat" style={{ ...card, marginTop: 16 }}>
               <div
                 role="tablist"
-                aria-label="チャットとメモ"
+                aria-label="チャット・メモ・目次"
                 style={{ display: "flex", gap: 8, marginBottom: 12 }}
               >
-                {(["chat", "memo"] as const).map((k) => (
+                {TABS.map(({ key: k, name }) => (
                   <button
                     key={k}
                     type="button"
@@ -427,7 +507,9 @@ export function AnalysisView({ id }: { id: string }) {
                     onClick={() => setTab(k)}
                     onKeyDown={(e) => {
                       if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-                        const next = k === "chat" ? "memo" : "chat";
+                        const at = TABS.findIndex((t) => t.key === k);
+                        const step = e.key === "ArrowRight" ? 1 : TABS.length - 1;
+                        const next = TABS[(at + step) % TABS.length].key;
                         setTab(next);
                         document.getElementById(`tab-${next}`)?.focus();
                       }
@@ -444,7 +526,7 @@ export function AnalysisView({ id }: { id: string }) {
                       color: tab === k ? "var(--accent-dark)" : "var(--text)",
                     }}
                   >
-                    {k === "chat" ? "チャット" : "メモ"}
+                    {name}
                   </button>
                 ))}
               </div>
@@ -471,6 +553,20 @@ export function AnalysisView({ id }: { id: string }) {
                 hidden={tab !== "memo"}
               >
                 <MemoPanel jobId={id} getTime={getTime} onSeek={seek} onError={setToast} />
+              </div>
+              <div
+                role="tabpanel"
+                id="panel-toc"
+                aria-labelledby="tab-toc"
+                className="chat-list-wrap"
+                hidden={tab !== "toc"}
+              >
+                <TocPanel
+                  buckets={recount ? filtered : state.kind === "job" ? state.buckets : null}
+                  laugh={laugh}
+                  getTime={getTime}
+                  onSeek={seek}
+                />
               </div>
             </aside>
           )}
