@@ -57,7 +57,7 @@ stack-select スキルが次を行います。
 | ジョブの受け渡し | Postgres の `jobs` 表（Redis は使わない） | 構成を増やさないため。分析結果も DB に保存する |
 | ORM | Drizzle | 標準どおり。マイグレーションは `drizzle/` に出す |
 | UI | 配色の変数は `src/app/globals.css` の `:root` | Tailwind・Lucide は最初の画面を決める（#2）ときに入れる |
-| テスト | Vitest | Playwright は最初の画面ができたときに足す |
+| テスト | Vitest、Playwright（`e2e/`） | 通しテストと 375・1024・1440px の写真・はみ出し確認。`npm run build` のあと `npm run test:e2e`（Postgres が要る。既定は `test:db` と同じ `localhost:54329`、`E2E_DATABASE_URL` で変更）。写真は `e2e-screenshots/`。日本語の文字を写すには Noto CJK などのフォントが要る。`scripts/check` には入れない（CI 用のジョブは [#48](https://github.com/gati-hxmx/cometrix-v2/issues/48) の別 PR） |
 | Lint・整形 | Biome（対象は `src/`・`tests/`・ルートの設定ファイル） | 標準どおり。文書やスキルは整形しない |
 | CI | GitHub Actions で `scripts/check`（公開リポジトリなので無料） | |
 
