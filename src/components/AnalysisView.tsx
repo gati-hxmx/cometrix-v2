@@ -9,6 +9,7 @@ import { LEAD_DEFAULT, LEAD_KEY, type Lead, leadTarget, parseLead } from "../lib
 import { type FetchProgress, progressLabel, progressPercent } from "../lib/progress";
 import { BucketChart } from "./BucketChart";
 import { ChatList, type Filter } from "./ChatList";
+import { ClipPanel } from "./ClipPanel";
 import { KeywordLines } from "./KeywordLines";
 import { MemoPanel } from "./MemoPanel";
 import { PlaybackBar } from "./PlaybackBar";
@@ -41,6 +42,7 @@ const TABS = [
   { key: "chat", name: "チャット" },
   { key: "memo", name: "メモ" },
   { key: "toc", name: "目次" },
+  { key: "clip", name: "範囲" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
 const SERIES = [
@@ -159,6 +161,9 @@ export function AnalysisView({ id }: { id: string }) {
   // 古い分析の掃除（#50）でコメント本文を消した分析。保存済みの集計だけでグラフを描く。
   const purged = state.kind === "job" && state.job.messagesPurged === true;
   const [tab, setTab] = useState<Tab>("chat");
+  const [pickMode, setPickMode] = useState(false);
+  const [picked, setPicked] = useState<{ start: number; end: number; n: number } | null>(null);
+  const [mark, setMark] = useState<{ start: number; end: number } | null>(null);
   const [filtered, setFiltered] = useState<Bucket[] | null>(null);
   const [series, setSeries] = useState<"all" | "laugh">("all");
   const laugh = series === "laugh" && !purged;
@@ -490,6 +495,11 @@ export function AnalysisView({ id }: { id: string }) {
                   getTime={getTime}
                   filtered={filtering && filtered !== null}
                   laugh={laugh && filtered !== null}
+                  pickRange={pickMode && tab === "clip"}
+                  onPickRange={(a, b) =>
+                    setPicked((p) => ({ start: a, end: b, n: (p?.n ?? 0) + 1 }))
+                  }
+                  mark={mark}
                   clips={cleanClips(done?.result?.clips)}
                   lines={lines}
                 />
@@ -520,7 +530,7 @@ export function AnalysisView({ id }: { id: string }) {
             <aside className="analysis-chat" style={{ ...card, marginTop: 16 }}>
               <div
                 role="tablist"
-                aria-label="チャット・メモ・目次"
+                aria-label="チャット・メモ・目次・範囲"
                 style={{ display: "flex", gap: 8, marginBottom: 12 }}
               >
                 {TABS.map(({ key: k, name }) => (
@@ -600,6 +610,23 @@ export function AnalysisView({ id }: { id: string }) {
                   laugh={laugh}
                   getTime={getTime}
                   onSeek={seekPeak}
+                />
+              </div>
+              <div
+                role="tabpanel"
+                id="panel-clip"
+                aria-labelledby="tab-clip"
+                className="chat-list-wrap"
+                hidden={tab !== "clip"}
+              >
+                <ClipPanel
+                  jobId={id}
+                  getTime={getTime}
+                  onSeek={seek}
+                  onError={setToast}
+                  picked={picked}
+                  onPickMode={setPickMode}
+                  onMark={setMark}
                 />
               </div>
             </aside>
