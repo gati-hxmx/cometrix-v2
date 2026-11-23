@@ -19,6 +19,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       videoId: jobs.videoId,
       result: jobs.result,
       error: jobs.error,
+      // 共有リンクの鍵（#68）。この画面の ⋮ メニューで使う
+      shareToken: jobs.shareToken,
       updatedAt: jobs.updatedAt,
     })
     .from(jobs)

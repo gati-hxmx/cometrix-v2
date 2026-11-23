@@ -18,14 +18,14 @@ import { KeywordLines } from "./KeywordLines";
 import { MemoPanel } from "./MemoPanel";
 import { PeoplePanel } from "./PeoplePanel";
 import { PlaybackBar } from "./PlaybackBar";
+import { Player } from "./Player";
 import { ReanalyzeButton } from "./ReanalyzeButton";
 import { SavedFilters } from "./SavedFilters";
 import { Segmented } from "./Segmented";
 import { Toast } from "./Toast";
 import { TocPanel } from "./TocPanel";
-import { TwitchPlayer } from "./TwitchPlayer";
 import { UrlForm } from "./UrlForm";
-import { type PlayerHandle, YoutubePlayer } from "./YoutubePlayer";
+import type { PlayerHandle } from "./YoutubePlayer";
 
 const KEYS_SEEN_KEY = "cometrix-keys-seen";
 
@@ -68,6 +68,8 @@ type Job = {
   progress?: FetchProgress | null;
   /** done／failed のとき、あと何秒で分析し直せるか（#99）。 */
   retryAfterSec?: number | null;
+  /** 共有リンクの鍵（#68）。共有していなければ null */
+  shareToken?: string | null;
 };
 type State =
   | { kind: "loading" }
@@ -106,23 +108,6 @@ const backLink = {
   minWidth: 44,
   color: "var(--accent-dark)",
 } as const;
-
-/** 配信元に合ったプレイヤー。どちらも同じ PlayerHandle（seek・getTime）を持つ。 */
-function Player({
-  platform,
-  videoId,
-  ref,
-}: {
-  platform?: "youtube" | "twitch";
-  videoId: string;
-  ref: React.Ref<PlayerHandle>;
-}) {
-  return platform === "twitch" ? (
-    <TwitchPlayer ref={ref} videoId={videoId} />
-  ) : (
-    <YoutubePlayer ref={ref} videoId={videoId} />
-  );
-}
 
 /** 取得中の進み具合（#43）。長さが分からないときはバーを出さず、取得済みの時刻だけ出す。 */
 function FetchProgressBar({ progress }: { progress: FetchProgress }) {
@@ -217,6 +202,8 @@ export function AnalysisView({ id }: { id: string }) {
   const [filter, setFilter] = useState<Filter>(EMPTY_FILTER);
   // 保存した絞り込みの呼び出し（#67）
   const [preset, setPreset] = useState<{ filter: Filter; n: number } | null>(null);
+  // 共有リンクの鍵（#68）。読み込んだ値から始め、⋮ メニューで作る・やめると入れ替える
+  const [shareToken, setShareToken] = useState<string | null | undefined>(undefined);
   const chatBox = useRef<HTMLElement>(null);
   // よくコメントした人（#64）の名前を押したとき：チャットをその人だけに絞り、チャットの札を見せる
   const filterRef = useRef(filter);
@@ -586,7 +573,10 @@ export function AnalysisView({ id }: { id: string }) {
                             }
                           : null
                       }
+                      shareToken={shareToken === undefined ? (done.shareToken ?? null) : shareToken}
+                      onShareToken={setShareToken}
                       onDone={pushNote}
+                      onUndoable={pushNote}
                       onError={setToast}
                     />
                   </div>

@@ -32,6 +32,8 @@ export const jobs = pgTable(
     result: jsonb("result"),
     // 失敗のとき { code, message }
     error: jsonb("error"),
+    // 共有リンク（#68）の鍵。読むだけのページ /s/<鍵> で使う。分析の ID とは別にし、共有ページから元の分析画面へ辿れないようにする。
+    shareToken: text("share_token"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -40,6 +42,7 @@ export const jobs = pgTable(
     uniqueIndex("jobs_video_active_uniq")
       .on(t.platform, t.videoId)
       .where(sql`${t.status} <> 'failed'`),
+    uniqueIndex("jobs_share_token_uniq").on(t.shareToken),
   ],
 );
 

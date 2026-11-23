@@ -4,6 +4,7 @@ import type { Bucket } from "../lib/chart";
 import { drawChart, IMAGE_H, IMAGE_W, type Palette } from "../lib/chart-image";
 import { clipsKey, parseClips } from "../lib/clip-ranges";
 import { chapterText, exportFileName, markerXml, ytDlpCommand } from "../lib/export";
+import { sharePath } from "../lib/share-url";
 import type { TocEntry } from "../lib/toc";
 import { Icon, type IconName } from "./Icon";
 
@@ -21,7 +22,10 @@ export function ExportMenu({
   toc,
   unit,
   graph,
+  shareToken,
+  onShareToken,
   onDone,
+  onUndoable,
   onError,
 }: {
   jobId: string;
@@ -36,7 +40,12 @@ export function ExportMenu({
   unit: string;
   /** 今グラフに出している範囲（拡大していればその範囲）。画像で保存する（#69）。 */
   graph: { heading: string; buckets: Bucket[]; combine: "sum" | "max" } | null;
+  /** 共有リンクの鍵（#68）。共有していなければ null */
+  shareToken: string | null;
+  onShareToken: (token: string | null) => void;
   onDone: (text: string) => void;
+  /** ［元に戻す］つきのお知らせ */
+  onUndoable: (text: string, undo: () => void) => void;
   onError: (text: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -148,6 +157,54 @@ export function ExportMenu({
     }, "image/png");
   };
 
+  /** 共有リンクを作って（あればそのまま）コピーする。鍵を待つあいだもコピーの許可が切れないよう、ClipboardItem に約束を渡す。 */
+  const copyShare = async () => {
+    close(true);
+    const make = async () => {
+      const res = await fetch(`/api/jobs/${jobId}/share`, { method: "POST" });
+      if (!res.ok) throw new Error();
+      const { token } = (await res.json()) as { token: string };
+      onShareToken(token);
+      return new URL(sharePath(token), window.location.origin).toString();
+    };
+    try {
+      if (typeof ClipboardItem !== "undefined" && navigator.clipboard.write) {
+        const url = make();
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/plain": url.then((u) => new Blob([u], { type: "text/plain" })),
+          }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(await make());
+      }
+      onDone("共有リンクをコピーしました。");
+    } catch {
+      onError("共有リンクをコピーできませんでした。もう一度試してください。");
+    }
+  };
+
+  /** 共有をやめる。［元に戻す］で同じリンクに戻す。 */
+  const stopShare = async () => {
+    close(true);
+    const res = await fetch(`/api/jobs/${jobId}/share`, { method: "DELETE" }).catch(() => null);
+    if (!res?.ok) {
+      onError("共有をやめられませんでした。もう一度試してください。");
+      return;
+    }
+    const { token: old } = (await res.json()) as { token: string | null };
+    onShareToken(null);
+    onUndoable("共有をやめました。リンクは開けなくなりました。", async () => {
+      const back = await fetch(`/api/jobs/${jobId}/share`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(old ? { token: old } : {}),
+      }).catch(() => null);
+      if (back?.ok) onShareToken(((await back.json()) as { token: string }).token);
+      else onError("元に戻せませんでした。");
+    });
+  };
+
   const chapters = chapterText(toc, { unit, durationSec });
   const noClips = clipCount === 0 ? "「範囲」で切り抜きの範囲を足すと使えます" : null;
   const csvHref = `/api/jobs/${jobId}/export${filterQuery ? `?${filterQuery}` : ""}`;
@@ -200,6 +257,22 @@ export function ExportMenu({
               text={filtering ? "絞り込んだチャットを CSV で保存" : "チャットを CSV で保存"}
             />
           </a>
+          <MenuButton
+            icon="link"
+            text="共有リンクをコピー"
+            note="読むだけのページ。チャットの名前とメモは出ません"
+            disabledNote={null}
+            onClick={copyShare}
+          />
+          {shareToken && (
+            <MenuButton
+              icon="link-2-off"
+              text="共有をやめる"
+              note="共有したリンクを開けなくします"
+              disabledNote={null}
+              onClick={stopShare}
+            />
+          )}
           <MenuButton
             icon="download"
             text="グラフを画像で保存"
