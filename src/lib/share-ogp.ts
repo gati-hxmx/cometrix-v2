@@ -3,7 +3,8 @@ import type { Bucket } from "./buckets";
 // 共有リンクを SNS に貼ったときの絵（#68）の中身。描くのは src/app/s/[token]/opengraph-image.tsx。
 
 export const OGP_BARS = 96;
-export const OGP_TITLE_MAX = 60;
+// 52px の太字で1行におよそ20字。2行に収まり、末尾の「…」が見える長さ
+export const OGP_TITLE_MAX = 38;
 
 /** 棒の高さ（0〜1）。棒が多すぎると細くて見えないので、OGP_BARS 本までにまとめる（区間の合計）。いちばん高い棒は peak。 */
 export function ogpBars(buckets: Bucket[], n = OGP_BARS): { h: number; peak: boolean }[] {

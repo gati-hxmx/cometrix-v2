@@ -39,7 +39,7 @@ test("SNS の絵の棒は 96 本までにまとめ、いちばん高い棒に印
 });
 
 test("長いタイトルは … で切り、空なら代わりの文", () => {
-  expect(ogpTitle("あ".repeat(80))).toBe(`${"あ".repeat(59)}…`);
+  expect(ogpTitle("あ".repeat(80))).toBe(`${"あ".repeat(37)}…`);
   expect(ogpTitle("短い")).toBe("短い");
   expect(ogpTitle("  ")).toBe("配信の盛り上がり");
 });
@@ -61,4 +61,23 @@ test("字は使う字だけを取り、取れなければ null", async () => {
   const woff2 = (async () =>
     new Response("src: url(https://x/y.woff2) format('woff2');")) as typeof fetch;
   expect(await loadOgpFont("配信", woff2)).toBeNull();
+});
+
+test("SNS の絵の URL の始まりは、APP_ORIGIN か、Host と X-Forwarded-Proto から作る", async () => {
+  const { requestOrigin } = await import("../src/lib/origin");
+  const h = (o: Record<string, string>) => new Headers(o);
+  expect(requestOrigin(h({ host: "x" }), "https://cometrix.example/app")).toBe(
+    "https://cometrix.example",
+  );
+  expect(
+    requestOrigin(h({ host: "cometrix.example", "x-forwarded-proto": "https" }), undefined),
+  ).toBe("https://cometrix.example");
+  expect(requestOrigin(h({ host: "cometrix.example" }), undefined)).toBe(
+    "https://cometrix.example",
+  );
+  expect(requestOrigin(h({ host: "localhost:3000" }), undefined)).toBe("http://localhost:3000");
+  expect(requestOrigin(h({ "x-forwarded-host": "a.example, b", host: "c" }), undefined)).toBe(
+    "https://a.example",
+  );
+  expect(requestOrigin(h({ host: "evil.example/../x" }), undefined)).toBe("http://localhost:3000");
 });

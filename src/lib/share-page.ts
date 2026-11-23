@@ -1,5 +1,6 @@
-import { asc, eq } from "drizzle-orm";
-import type { getDb } from "../db/client";
+import { and, asc, eq, isNotNull } from "drizzle-orm";
+import { cache } from "react";
+import { getDb } from "../db/client";
 import { chatBuckets, jobs } from "../db/schema";
 import type { Bucket } from "./buckets";
 import { SHARE_TOKEN } from "./share-link";
@@ -13,7 +14,7 @@ export type Shared = {
   buckets: Bucket[];
 };
 
-/** 鍵から共有ページの中身を読む。鍵が無い・分析が終わっていなければ null。 */
+/** 鍵から共有ページの中身を読む。鍵が無い・共有をやめた・分析が終わっていなければ null。 */
 export async function loadShared(
   db: ReturnType<typeof getDb>,
   token: string,
@@ -22,7 +23,7 @@ export async function loadShared(
   const [job] = await db
     .select({ id: jobs.id, status: jobs.status, platform: jobs.platform, result: jobs.result })
     .from(jobs)
-    .where(eq(jobs.shareToken, token));
+    .where(and(eq(jobs.shareToken, token), isNotNull(jobs.sharedAt)));
   if (job?.status !== "done") return null;
   const r = (job.result ?? {}) as { title?: unknown; videoId?: unknown; totalComments?: unknown };
   if (typeof r.videoId !== "string") return null;
@@ -39,3 +40,6 @@ export async function loadShared(
     buckets,
   };
 }
+
+/** 1回の表示（メタデータ・ページ）で同じ鍵を2回読まないよう、リクエストの中でまとめる */
+export const loadSharedCached = cache((token: string) => loadShared(getDb(), token));

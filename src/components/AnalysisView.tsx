@@ -29,7 +29,7 @@ import type { PlayerHandle } from "./YoutubePlayer";
 
 const KEYS_SEEN_KEY = "cometrix-keys-seen";
 
-type Note = { id: number; message: string; undo?: () => void };
+type Note = { id: number; message: string; undo?: () => unknown };
 
 /** お知らせ1つ。閉じる・戻すの関数を id ごとに固定して、4秒で消える時計が描き直しで止まらないようにする。 */
 function NoteToast({
@@ -177,7 +177,7 @@ export function AnalysisView({ id }: { id: string }) {
   // できました・［元に戻す］のお知らせ。基本 8-1 のとおり、3つまで重ねて新しいものを上に出す。
   const [notes, setNotes] = useState<Note[]>([]);
   const noteId = useRef(0);
-  const pushNote = useCallback((message: string, undo?: () => void) => {
+  const pushNote = useCallback((message: string, undo?: () => unknown) => {
     noteId.current += 1;
     const id = noteId.current;
     setNotes((cur) => [...cur, { id, message, undo }].slice(-3));
@@ -187,8 +187,13 @@ export function AnalysisView({ id }: { id: string }) {
   }, []);
   const notesRef = useRef(notes);
   notesRef.current = notes;
-  const undoNote = useCallback((id: number) => {
-    notesRef.current.find((x) => x.id === id)?.undo?.();
+  const undoNote = useCallback(async (id: number) => {
+    // 戻すのに時間がかかるもの（共有の再開など）は結果を待ち、失敗したらこのお知らせは消す（失敗は別のお知らせで出る）
+    const ok = await notesRef.current.find((x) => x.id === id)?.undo?.();
+    if (ok === false) {
+      setNotes((cur) => cur.filter((x) => x.id !== id));
+      return;
+    }
     // 戻したら、同じ場所で「元に戻しました」に替える（部品 4-2）
     setNotes((cur) => cur.map((x) => (x.id === id ? { id, message: "元に戻しました。" } : x)));
   }, []);

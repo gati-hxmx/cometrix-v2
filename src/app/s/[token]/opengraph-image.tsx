@@ -1,8 +1,8 @@
+import { notFound } from "next/navigation";
 import { ImageResponse } from "next/og";
-import { getDb } from "../../../db/client";
 import { APP_COLORS } from "../../../lib/app-colors";
 import { loadOgpFont, ogpBars, ogpTitle } from "../../../lib/share-ogp";
-import { loadShared } from "../../../lib/share-page";
+import { loadSharedCached } from "../../../lib/share-page";
 
 // 共有リンクを SNS に貼ったときの絵（#68）：タイトルとコメント数のグラフ。色はライトの配色。
 export const size = { width: 1200, height: 630 };
@@ -13,10 +13,12 @@ const C = APP_COLORS.light;
 
 export default async function Image({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const shared = await loadShared(getDb(), token);
-  const title = ogpTitle(shared?.title ?? "");
-  const count = shared ? `コメント ${shared.totalComments.toLocaleString("ja-JP")} 件` : "";
-  const bars = ogpBars(shared?.buckets ?? []);
+  const shared = await loadSharedCached(token);
+  // 無い・やめたリンクは 404（字を取りに行かない）
+  if (!shared) notFound();
+  const title = ogpTitle(shared.title);
+  const count = `コメント ${shared.totalComments.toLocaleString("ja-JP")} 件`;
+  const bars = ogpBars(shared.buckets);
   const font = await loadOgpFont(`${title}${count}Cometrix配信の盛り上がり0123456789,`);
   return new ImageResponse(
     <div

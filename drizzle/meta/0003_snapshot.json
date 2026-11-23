@@ -1,5 +1,5 @@
 {
-  "id": "6c3c474e-dfbd-4b0f-8996-e66095f12422",
+  "id": "13991523-577c-415a-88a3-2596f1a68b54",
   "prevId": "0d159f43-5253-4991-8f2b-7f658c2c7ba5",
   "version": "7",
   "dialect": "postgresql",
@@ -206,6 +206,12 @@
         "share_token": {
           "name": "share_token",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "shared_at": {
+          "name": "shared_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },

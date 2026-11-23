@@ -45,7 +45,7 @@ export function ExportMenu({
   onShareToken: (token: string | null) => void;
   onDone: (text: string) => void;
   /** ［元に戻す］つきのお知らせ */
-  onUndoable: (text: string, undo: () => void) => void;
+  onUndoable: (text: string, undo: () => Promise<boolean>) => void;
   onError: (text: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -168,6 +168,7 @@ export function ExportMenu({
       return new URL(sharePath(token), window.location.origin).toString();
     };
     try {
+      if (!navigator.clipboard) throw new Error("no clipboard");
       if (typeof ClipboardItem !== "undefined" && navigator.clipboard.write) {
         const url = make();
         await navigator.clipboard.write([
@@ -184,7 +185,7 @@ export function ExportMenu({
     }
   };
 
-  /** 共有をやめる。［元に戻す］で同じリンクに戻す。 */
+  /** 共有をやめる。［元に戻す］で同じリンクのまま再開する。 */
   const stopShare = async () => {
     close(true);
     const res = await fetch(`/api/jobs/${jobId}/share`, { method: "DELETE" }).catch(() => null);
@@ -192,16 +193,15 @@ export function ExportMenu({
       onError("共有をやめられませんでした。もう一度試してください。");
       return;
     }
-    const { token: old } = (await res.json()) as { token: string | null };
     onShareToken(null);
     onUndoable("共有をやめました。リンクは開けなくなりました。", async () => {
-      const back = await fetch(`/api/jobs/${jobId}/share`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(old ? { token: old } : {}),
-      }).catch(() => null);
-      if (back?.ok) onShareToken(((await back.json()) as { token: string }).token);
-      else onError("元に戻せませんでした。");
+      const back = await fetch(`/api/jobs/${jobId}/share`, { method: "POST" }).catch(() => null);
+      if (!back?.ok) {
+        onError("元に戻せませんでした。");
+        return false;
+      }
+      onShareToken(((await back.json()) as { token: string }).token);
+      return true;
     });
   };
 
@@ -214,7 +214,7 @@ export function ExportMenu({
       <button
         ref={trigger}
         type="button"
-        aria-label="書き出し"
+        aria-label="書き出しと共有"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
@@ -237,7 +237,7 @@ export function ExportMenu({
       {open && (
         <div
           role="menu"
-          aria-label="書き出し"
+          aria-label="書き出しと共有"
           className="menu-pop"
           onBlur={(e) => {
             // Tab でメニューの外へ出たら閉じる（後ろの画面にフォーカスがあるのに開いたままにしない）

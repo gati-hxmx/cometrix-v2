@@ -15,14 +15,8 @@ describe.skipIf(!url)("共有リンク（Postgres）", () => {
   let page: typeof import("../src/lib/share-page");
   let client: typeof import("../src/db/client");
   const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
-  const post = (id: string, body?: unknown) =>
-    route.POST(
-      new Request("http://x/", {
-        method: "POST",
-        body: body === undefined ? undefined : JSON.stringify(body),
-      }),
-      ctx(id),
-    );
+  const post = (id: string) => route.POST(new Request("http://x/", { method: "POST" }), ctx(id));
+  const del = (id: string) => route.DELETE(new Request("http://x/", { method: "DELETE" }), ctx(id));
 
   beforeAll(async () => {
     process.env.DATABASE_URL = url;
@@ -61,15 +55,13 @@ describe.skipIf(!url)("共有リンク（Postgres）", () => {
     return { id: job.id, videoId };
   }
 
-  test("作ると 201 で鍵を返し、もう一度押しても同じ鍵", async () => {
+  test("作ると鍵を返し、もう一度押しても同じ鍵", async () => {
     const { id } = await seed();
     const first = await post(id);
-    expect(first.status).toBe(201);
+    expect(first.status).toBe(200);
     const { token } = (await first.json()) as { token: string };
     expect(token).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    const again = await post(id);
-    expect(again.status).toBe(200);
-    expect(await again.json()).toEqual({ token });
+    expect(await (await post(id)).json()).toEqual({ token });
   });
 
   test("同時に2回押しても鍵は1つ", async () => {
@@ -80,16 +72,12 @@ describe.skipIf(!url)("共有リンク（Postgres）", () => {
     expect(ta).toBe(tb);
   });
 
-  test("分析が終わっていなければ 409、無ければ 404、変な本文は 400", async () => {
+  test("分析が終わっていなければ 409、無ければ 404", async () => {
     const running = await seed("running");
     expect((await post(running.id)).status).toBe(409);
     expect((await post("00000000-0000-0000-0000-000000000000")).status).toBe(404);
     expect((await post("x")).status).toBe(404);
-    const { id } = await seed();
-    expect((await post(id, { token: "短い" })).status).toBe(400);
-    expect(
-      (await route.POST(new Request("http://x/", { method: "POST", body: "{" }), ctx(id))).status,
-    ).toBe(400);
+    expect((await del("00000000-0000-0000-0000-000000000000")).status).toBe(404);
   });
 
   test("共有ページの中身はタイトル・動画・グラフだけで、名前・本文・分析の ID は入らない", async () => {
@@ -110,20 +98,45 @@ describe.skipIf(!url)("共有リンク（Postgres）", () => {
     for (const leak of ["taro", "jiro", "草", id]) expect(text).not.toContain(leak);
   });
 
-  test("やめるとリンクは開けなくなり、元に戻すと同じ鍵で開ける", async () => {
+  test("やめるとリンクは開けなくなり、再開すると同じ鍵で開ける", async () => {
     const { id } = await seed();
     const { token } = (await (await post(id)).json()) as { token: string };
-    const del = await route.DELETE(new Request("http://x/", { method: "DELETE" }), ctx(id));
-    expect(await del.json()).toEqual({ token });
+    expect((await del(id)).status).toBe(204);
     expect(await page.loadShared(client.getDb(), token)).toBeNull();
-    const back = await post(id, { token });
-    expect(await back.json()).toEqual({ token });
+    expect(await (await post(id)).json()).toEqual({ token });
     expect(await page.loadShared(client.getDb(), token)).not.toBeNull();
+  });
+
+  test("やめた鍵は、ほかの分析に付け替えられない（鍵は外から受け取らない）", async () => {
+    const a = await seed();
+    const b = await seed();
+    const { token } = (await (await post(a.id)).json()) as { token: string };
+    await del(a.id);
+    // 本文に A の鍵を入れても無視され、B には別の鍵ができる
+    const res = await route.POST(
+      new Request("http://x/", { method: "POST", body: JSON.stringify({ token }) }),
+      ctx(b.id),
+    );
+    const other = ((await res.json()) as { token: string }).token;
+    expect(other).not.toBe(token);
+    expect(await page.loadShared(client.getDb(), token)).toBeNull();
+    expect(await (await post(a.id)).json()).toEqual({ token });
+    expect((await page.loadShared(client.getDb(), token))?.videoId).toBe(a.videoId);
   });
 
   test("知らない鍵・形のちがう鍵は null", async () => {
     expect(await page.loadShared(client.getDb(), "a".repeat(22))).toBeNull();
     expect(await page.loadShared(client.getDb(), "../x")).toBeNull();
+  });
+
+  test("無い・やめたリンクの SNS の絵は 404", async () => {
+    const { id } = await seed();
+    const { token } = (await (await post(id)).json()) as { token: string };
+    await del(id);
+    const { default: Image } = await import("../src/app/s/[token]/opengraph-image");
+    await expect(Image({ params: Promise.resolve({ token }) })).rejects.toThrow(
+      /NEXT_HTTP_ERROR_FALLBACK;404|NEXT_NOT_FOUND/,
+    );
   });
 
   test("SNS の絵は、字が取れなくても PNG を返す", async () => {
