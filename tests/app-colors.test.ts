@@ -14,6 +14,10 @@ test("ライトの色は globals.css の最初の変数と同じ", () => {
   expect(token(light, "surface")).toBe(APP_COLORS.light.surface);
   expect(token(light, "accent")).toBe(APP_COLORS.light.accent);
   expect(token(light, "accent-weak")).toBe(APP_COLORS.light.accentWeak);
+  expect(token(light, "text")).toBe(APP_COLORS.light.text);
+  expect(token(light, "muted")).toBe(APP_COLORS.light.muted);
+  expect(token(light, "line")).toBe(APP_COLORS.light.line);
+  expect(token(light, "chart-1")).toBe(APP_COLORS.light.chart1);
 });
 
 test("ダークの地の色は globals.css のダークの変数と同じ", () => {
