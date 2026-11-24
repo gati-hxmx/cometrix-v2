@@ -10,6 +10,7 @@ type TwitchPlayerApi = {
   play(): void;
   pause(): void;
   isPaused(): boolean;
+  getEnded?: () => boolean;
   getCurrentTime(): number;
   addEventListener(event: string, cb: () => void): void;
   destroy?: () => void;
@@ -65,6 +66,18 @@ export function TwitchPlayer({ videoId, ref }: { videoId: string; ref?: Ref<Play
   const [problem, setProblem] = useState<"failed" | "blocked" | null>(null);
 
   useImperativeHandle(ref, () => ({
+    pause() {
+      try {
+        player.current?.pause();
+      } catch {}
+    },
+    isEnded() {
+      try {
+        return player.current?.getEnded?.() ?? false;
+      } catch {
+        return false;
+      }
+    },
     togglePlay() {
       const p = player.current;
       if (!p) return;

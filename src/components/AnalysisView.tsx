@@ -489,9 +489,9 @@ export function AnalysisView({ id }: { id: string }) {
       localStorage.setItem(REEL_KEY, reelKeyValue(v));
     } catch {}
   }, []);
-  const [reel, setReel] = useState<{ items: ReelItem[]; index: number; remain: number } | null>(
-    null,
-  );
+  // 並びと今の番号（残りの秒数は毎秒変わるので別に持ち、時計や見張りを作り直さない）
+  const [reel, setReel] = useState<{ items: ReelItem[]; index: number } | null>(null);
+  const [reelRemain, setReelRemain] = useState(0);
   const reelSeekAt = useRef(0);
   // scroll：始めたときだけ動画が見える所へ動かす。自動で次へ進むときは、チャットを読んでいても画面を動かさない
   const reelGo = useCallback(
@@ -500,27 +500,42 @@ export function AnalysisView({ id }: { id: string }) {
       reelSeekAt.current = Date.now();
       if (scroll) seek(it.start);
       else player.current?.seek(it.start);
-      setReel({ items, index, remain: it.end - it.start });
+      setReel({ items, index });
+      setReelRemain(it.end - it.start);
     },
     [seek],
   );
+  const durationSec =
+    state.kind === "job" && state.job.result
+      ? (state.job.result.lastBucketSec ?? 0) + 30
+      : undefined;
   const startReel = useCallback(() => {
-    const items = reelPlan(peaks, reelSettings, lead);
+    const items = reelPlan(peaks, reelSettings, lead, durationSec);
     if (items.length > 0) reelGo(items, 0, true);
-  }, [peaks, reelSettings, lead, reelGo]);
+  }, [peaks, reelSettings, lead, durationSec, reelGo]);
   const stopReel = useCallback(() => setReel(null), []);
+  // 目次の山が変わったら（絞り込み・グラフに出す数を変えた）、番号がずれるので止める
+  // biome-ignore lint/correctness/useExhaustiveDependencies: peaks が変わったことだけを合図にする
+  useEffect(() => {
+    setReel(null);
+  }, [peaks]);
   useEffect(() => {
     if (!reel) return;
     const timer = setInterval(() => {
       const p = player.current;
       if (!p) return;
-      const st = reelStep(reel.items, reel.index, p.getTime(), Date.now() - reelSeekAt.current);
-      if (st.kind === "stay") {
-        if (st.remain !== reel.remain) setReel({ ...reel, remain: st.remain });
-      } else if (st.kind === "next") reelGo(reel.items, st.index, false);
+      const st = reelStep(
+        reel.items,
+        reel.index,
+        p.getTime(),
+        Date.now() - reelSeekAt.current,
+        p.isEnded(),
+      );
+      if (st.kind === "stay") setReelRemain(st.remain);
+      else if (st.kind === "next") reelGo(reel.items, st.index, false);
       else if (st.kind === "done") {
-        // 最後の見どころの終わりで止める（再生中なので、切り替えで一時停止になる）
-        p.togglePlay();
+        // 最後の見どころの終わりで止める
+        p.pause();
         setReel(null);
         pushNote("見どころを最後まで再生しました");
       } else {
@@ -535,7 +550,7 @@ export function AnalysisView({ id }: { id: string }) {
         index: reel.index,
         count: reel.items.length,
         peakSec: reel.items[reel.index].peakSec,
-        remain: reel.remain,
+        remain: reelRemain,
       }
     : null;
   const reelMove = (d: -1 | 1) => {
@@ -566,13 +581,14 @@ export function AnalysisView({ id }: { id: string }) {
   // スマホでグラフが画面の外に出たら、下に同じ操作の列を出す
   const chartBox = useRef<HTMLElement>(null);
   const [chartSeen, setChartSeen] = useState(true);
+  const reeling = reel !== null;
   useEffect(() => {
     const el = chartBox.current;
-    if (!reel || !el || typeof IntersectionObserver === "undefined") return;
+    if (!reeling || !el || typeof IntersectionObserver === "undefined") return;
     const io = new IntersectionObserver(([e]) => setChartSeen(e.isIntersecting));
     io.observe(el);
     return () => io.disconnect();
-  }, [reel]);
+  }, [reeling]);
   const reelStart = peaks.length > 0 && (
     <ReelStart
       settings={reelSettings}
@@ -989,7 +1005,8 @@ export function AnalysisView({ id }: { id: string }) {
           onStop={stopReel}
         />
       )}
-      <div className="toast-stack">
+      {/* 下の列が出ているときは、お知らせをその上に出す（基本 8-1） */}
+      <div className={reelNow && !chartSeen ? "toast-stack above-reel-mini" : "toast-stack"}>
         {[...notes].reverse().map((n) => (
           <NoteToast key={n.id} note={n} onClose={closeNote} onUndo={undoNote} />
         ))}

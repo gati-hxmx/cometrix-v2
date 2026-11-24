@@ -25,9 +25,9 @@ const AXIS_BOTTOM = 22;
 const AXIS_RIGHT = 16;
 const AXIS_RIGHT_LINES = 36;
 const DRAG_THRESHOLD = 4;
-/** 見どころの番号の札（#61）：押せる大きさ（高さ 44px）、横は札どうしの間 */
+/** 見どころの番号の札（#61）：押せる大きさ（縦横 44px） */
 const STRIP_ROW = 44;
-const STRIP_W = 36;
+const STRIP_W = 44;
 
 export type ReelMark = { sec: number; n: number; state: "done" | "now" | "todo" };
 /** 見どころ再生（#61）でグラフに出すもの */
@@ -408,10 +408,15 @@ export function BucketChart({
   const wasPlayed = (b: Bucket) => reel?.played.some((w) => overlaps(b, w)) ?? false;
   const win = reel?.window;
   const marks = (reel?.marks ?? []).filter((m) => m.sec >= fromSec && m.sec < toSec);
-  const markAt = stripLayout(
-    marks.map((m) => (xOf(m.sec) / 100) * plotWidth),
-    STRIP_W + 4,
-  );
+  // 幅が測れるまでは1段に並べる（測れてから段が減って高さが跳ねないように）
+  const markAt =
+    plotWidth > 0
+      ? stripLayout(
+          marks.map((m) => (xOf(m.sec) / 100) * plotWidth),
+          STRIP_W + 4,
+          plotWidth,
+        )
+      : marks.map(() => ({ row: 0, x: 0 }));
   const stripHeight =
     marks.length > 0 ? (Math.max(...markAt.map((p) => p.row)) + 1) * STRIP_ROW : 0;
 

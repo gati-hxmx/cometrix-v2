@@ -88,10 +88,16 @@ test("番号の札を重ならないよう段に分け、入らないときは�
   // 並び順に関係なく左から決める
   expect(rows([50, 10, 30])).toEqual([0, 0, 1]);
   // 3つめは段が足りないので、空いている段（0 段目）で前の札のすぐ右へ
+  // （左端の札は、半分が左へはみ出さないよう 20 まで寄せる）
+  expect(stripLayout([110, 120, 130], 40)).toEqual([
+    { row: 0, x: 110 },
+    { row: 1, x: 120 },
+    { row: 0, x: 150 },
+  ]);
   expect(stripLayout([10, 20, 30], 40)).toEqual([
-    { row: 0, x: 10 },
+    { row: 0, x: 20 },
     { row: 1, x: 20 },
-    { row: 0, x: 50 },
+    { row: 0, x: 60 },
   ]);
   // ずらした札の後ろの札も重ならない
   const placed = stripLayout([0, 5, 10, 15, 20], 40);
@@ -99,4 +105,38 @@ test("番号の札を重ならないよう段に分け、入らないときは�
     const xs = placed.filter((p) => p.row === r).map((p) => p.x);
     for (let k = 1; k < xs.length; k++) expect(xs[k] - xs[k - 1]).toBeGreaterThanOrEqual(40);
   }
+});
+
+test("札は幅からはみ出さず、寄せても重ならない", () => {
+  const placed = stripLayout([250, 262, 274, 286, 298], 48, 300);
+  for (const p of placed) {
+    expect(p.x).toBeGreaterThanOrEqual(24);
+    expect(p.x).toBeLessThanOrEqual(276);
+  }
+  for (const r of [0, 1]) {
+    const xs = placed
+      .filter((p) => p.row === r)
+      .map((p) => p.x)
+      .sort((a, b) => a - b);
+    for (let k = 1; k < xs.length; k++) expect(xs[k] - xs[k - 1]).toBeGreaterThanOrEqual(48);
+  }
+  // 左端も
+  expect(stripLayout([0], 48, 300)[0].x).toBe(24);
+});
+
+test("動画の終わりの山は、動画の長さで終わりをそろえる", () => {
+  const items = reelPlan([{ startSec: 3600, count: 9 }], { count: 7, len: 30 }, 20, 3605);
+  expect(items[0]).toMatchObject({ start: 3580, end: 3605 });
+  // 動画の長さより後ろから始まることもない
+  const late = reelPlan([{ startSec: 3600, count: 9 }], { count: 7, len: 30 }, 0, 3600);
+  expect(late[0].start).toBeLessThan(3600);
+  expect(late[0].end).toBeGreaterThan(late[0].start);
+});
+
+test("動画が最後まで来て止まったら、次へ（最後なら終わり）", () => {
+  const two = reelPlan(toc.slice(0, 2), { count: 7, len: 30 }, 20);
+  expect(reelStep(two, 0, 600, REEL_GRACE_MS, true)).toEqual({ kind: "next", index: 1 });
+  expect(reelStep(two, 1, 20, REEL_GRACE_MS, true)).toEqual({ kind: "done" });
+  // 動かした直後は、前の動画の「終わった」を見ない
+  expect(reelStep(two, 0, 590, 500, true)).toEqual({ kind: "stay", remain: 20 });
 });

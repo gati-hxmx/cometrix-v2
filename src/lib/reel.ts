@@ -46,11 +46,22 @@ export function reelKeyValue(s: ReelSettings): string {
 }
 
 /** 目次の山から、再生する並びを作る。範囲が前の範囲と重なっても、そのまま並べる（山ごとに少し前から見る）。 */
-export function reelPlan(entries: TocEntry[], s: ReelSettings, lead: number): ReelItem[] {
+export function reelPlan(
+  entries: TocEntry[],
+  s: ReelSettings,
+  lead: number,
+  durationSec = Number.POSITIVE_INFINITY,
+): ReelItem[] {
   const picked = s.count === 0 ? entries : entries.slice(0, s.count);
   return picked.map((e, n) => {
-    const start = leadTarget(e.startSec, lead);
-    return { n, peakSec: e.startSec, start, end: start + s.len };
+    const start = Math.min(leadTarget(e.startSec, lead), Math.max(0, durationSec - 1));
+    // 配信の終わりの山（「おつ」など）は、動画の長さを越えないよう終わりをそろえる
+    return {
+      n,
+      peakSec: e.startSec,
+      start,
+      end: Math.max(start + 1, Math.min(start + s.len, durationSec)),
+    };
   });
 }
 
@@ -89,10 +100,14 @@ export function reelStep(
   index: number,
   now: number,
   sinceSeekMs: number,
+  ended = false,
 ): ReelStep {
   const it = items[index];
   if (!it) return { kind: "done" };
   const settled = sinceSeekMs >= REEL_GRACE_MS;
+  // 動画の最後まで来て止まった（終わりの長さが少しずれていても、そこで次へ）
+  if (ended && settled)
+    return index + 1 < items.length ? { kind: "next", index: index + 1 } : { kind: "done" };
   if (settled && (now < it.start - REEL_LEAVE_SEC || now > it.end + REEL_LEAVE_SEC))
     return { kind: "left" };
   if (now >= it.end) {
@@ -105,11 +120,18 @@ export function reelStep(
 }
 
 /**
- * グラフの下の番号の札を、重ならないように置く（左から順に、空いている最初の段へ）。
- * どの段も空いていなければ、いちばん左が空いている段で、前の札のすぐ右へずらす。
+ * グラフの下の番号の札を、重ならず、幅からはみ出さないように置く。
+ * 左から順に、空いている最初の段へ置く。どの段も空いていなければ、いちばん左が空いている段で前の札のすぐ右へずらす。
+ * 最後に段ごとに、左右の端（0〜width）からはみ出さないよう寄せる（寄せた札の隣も重ならないようずらす）。
  * xs は札の中心の位置（px）。返り値は段の番号と、置く位置（px）。
  */
-export function stripLayout(xs: number[], gap: number, maxRows = 2): { row: number; x: number }[] {
+export function stripLayout(
+  xs: number[],
+  gap: number,
+  width = Number.POSITIVE_INFINITY,
+  maxRows = 2,
+): { row: number; x: number }[] {
+  const half = gap / 2;
   const order = xs.map((x, i) => ({ x, i })).sort((a, b) => a.x - b.x);
   const last: number[] = [];
   const out = xs.map((x) => ({ row: 0, x }));
@@ -125,6 +147,20 @@ export function stripLayout(xs: number[], gap: number, maxRows = 2): { row: numb
     }
     last[r] = at;
     out[i] = { row: r, x: at };
+  }
+  for (let r = 0; r < maxRows; r++) {
+    const inRow = out.filter((p) => p.row === r).sort((a, b) => a.x - b.x);
+    // 左端からはみ出さないよう右へ、続いて右端からはみ出さないよう左へ寄せる（入りきらないほど多いときだけ重なる）
+    let floor = half;
+    for (const p of inRow) {
+      p.x = Math.max(p.x, floor);
+      floor = p.x + gap;
+    }
+    let limit = width - half;
+    for (const p of inRow.reverse()) {
+      p.x = Math.min(p.x, limit);
+      limit = p.x - gap;
+    }
   }
   return out;
 }

@@ -72,6 +72,8 @@ describe("見どころ再生の操作（#61）", () => {
     expect(first).toContain("1 / 3");
     expect(first).toContain("0:05:00");
     expect(first).toContain("あと 18 秒");
+    // あと N 秒は毎秒変わるので読み上げの対象に入れない
+    expect(first).toMatch(/aria-hidden="true" class="reel-remain"/);
     expect(first).toMatch(/aria-label="前の見どころ" disabled=""/);
     expect(first).not.toMatch(/aria-label="次の見どころ" disabled=""/);
     const last = renderToStaticMarkup(
@@ -84,8 +86,9 @@ describe("見どころ再生の操作（#61）", () => {
       />,
     );
     expect(last).toMatch(/aria-label="次の見どころ" disabled=""/);
-    // スマホの1行は「止める」の文字を出さない（読み上げの名前は残す）
+    // 下の列（compact）でも「止める」の文字を添え、あと N 秒は省く
     expect(last).toContain('aria-label="見どころ再生を止める"');
-    expect(last).not.toContain(">止める<");
+    expect(last).toContain("止める</button>");
+    expect(last).not.toContain("あと");
   });
 });

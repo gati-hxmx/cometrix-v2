@@ -58,13 +58,11 @@ export function ReelStart({
   onSettings,
   totalSec,
   onStart,
-  disabled = false,
 }: {
   settings: ReelSettings;
   onSettings: (s: ReelSettings) => void;
   totalSec: number;
   onStart: () => void;
-  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -93,14 +91,11 @@ export function ReelStart({
       <button
         type="button"
         onClick={onStart}
-        disabled={disabled}
         style={{
           ...btn,
           background: "var(--accent)",
           borderColor: "var(--accent)",
           color: "var(--surface)",
-          opacity: disabled ? 0.5 : 1,
-          cursor: disabled ? "default" : "pointer",
         }}
       >
         <Icon name="play" />
@@ -165,7 +160,7 @@ export function ReelStart({
   );
 }
 
-/** 再生中の「3 / 7・時刻・あと N 秒」と ‹ › ［止める］。compact はスマホの1行用（止めるもアイコンだけ） */
+/** 再生中の「3 / 7・時刻・あと N 秒」と ‹ › ［止める］。compact は画面の下の列用（あと N 秒を省く） */
 export function ReelStatus({
   now,
   onPrev,
@@ -182,7 +177,6 @@ export function ReelStatus({
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: "1 1 auto" }}>
       <span
-        aria-live="polite"
         style={{
           flex: "1 1 auto",
           minWidth: 0,
@@ -193,13 +187,24 @@ export function ReelStatus({
           overflow: "hidden",
         }}
       >
-        <strong style={{ fontVariantNumeric: "tabular-nums" }}>
-          {now.index + 1} / {now.count}
-        </strong>
-        <span style={{ color: "var(--muted)", fontSize: 13, fontVariantNumeric: "tabular-nums" }}>
-          {formatTime(now.peakSec)}
-          {compact ? "" : <span className="reel-remain">・あと {now.remain} 秒</span>}
+        {/* 読み上げは見どころが替わったときだけ（あと N 秒は毎秒変わるので入れない） */}
+        <span aria-live="polite" style={{ display: "contents" }}>
+          <strong style={{ fontVariantNumeric: "tabular-nums" }}>
+            {now.index + 1} / {now.count}
+          </strong>
+          <span style={{ color: "var(--muted)", fontSize: 13, fontVariantNumeric: "tabular-nums" }}>
+            {formatTime(now.peakSec)}
+          </span>
         </span>
+        {!compact && (
+          <span
+            aria-hidden
+            className="reel-remain"
+            style={{ color: "var(--muted)", fontSize: 13, fontVariantNumeric: "tabular-nums" }}
+          >
+            あと {now.remain} 秒
+          </span>
+        )}
       </span>
       <button
         type="button"
@@ -219,14 +224,10 @@ export function ReelStatus({
       >
         ›
       </button>
-      <button
-        type="button"
-        aria-label="見どころ再生を止める"
-        onClick={onStop}
-        style={compact ? iconBtn : btn}
-      >
+      {/* ■ だけでは伝わらないので、スマホでも「止める」を添える（部品 3-1） */}
+      <button type="button" aria-label="見どころ再生を止める" onClick={onStop} style={btn}>
         <Icon name="square" size={18} />
-        {compact ? "" : <span className="reel-stop-text">止める</span>}
+        止める
       </button>
     </div>
   );
