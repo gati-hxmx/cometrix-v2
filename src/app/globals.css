@@ -37,6 +37,11 @@
   --r-god: #e3cf78;
   --r-cry: #9fc9ec;
   --r-other: #d5dde8;
+  /* コラボを重ねて比べる（#63）の配信ごとの線。グラフの系列色と同じ並び（docs/design/colors.md 3-2） */
+  --v-1: var(--chart-1);
+  --v-2: var(--chart-2);
+  --v-3: var(--chart-3);
+  --v-4: var(--r-wow);
   /* 反応の色の上の字（名札） */
   --r-text: #1b2430;
   /* 重ねて出すもの（小さなメニュー）の影 */
@@ -251,8 +256,17 @@ body {
   box-shadow: 0 8px 24px var(--shadow);
 }
 .menu-pop [role="menuitem"]:hover:not([aria-disabled="true"]),
-.menu-pop [role="menuitem"]:focus-visible {
+.menu-pop [role="menuitem"]:focus-visible,
+.menu-pop [role="menuitemradio"]:hover,
+.menu-pop [role="menuitemradio"]:focus-visible {
   background: var(--surface-2);
+}
+/* 「‹ 名前 ▾ ›」の名前 ▾ のメニュー（#63）：名前のボタンの真下に、ボタンと同じ幅で */
+.picker-pop {
+  top: calc(100% + 4px);
+  left: 52px;
+  right: 52px;
+  width: auto;
 }
 /* スマホは横いっぱい（枠の左右の端＝画面の左右 16px） */
 @media (max-width: 599px) {
@@ -307,5 +321,34 @@ body {
 @media (max-width: 1023px) {
   .toast-stack.above-reel-mini {
     bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* コラボを重ねて比べる（#63、docs/screens/compare.md）：PC は左に動画とグラフ、右に重ねる配信の一覧。スマホは1列 */
+@media (min-width: 1024px) {
+  .compare-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 16px;
+    align-items: start;
+  }
+  .compare-side {
+    position: sticky;
+    top: 16px;
+  }
+  /* PC は数をグラフの中の小窓に出すので、名前の札には出さない */
+  .compare-chip-count {
+    display: none;
+  }
+}
+@media (max-width: 1023px) {
+  /* スマホ・タブレットは小窓を出さず、名前の札に数を出す */
+  .compare-tip {
+    display: none;
+  }
+}
+@media (max-width: 599px) {
+  .compare-head-note {
+    display: none;
   }
 }
