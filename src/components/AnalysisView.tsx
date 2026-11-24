@@ -328,8 +328,6 @@ export function AnalysisView({ id }: { id: string }) {
   }, [filter, recount, laugh, spam, users, isDone, id, filtering]);
 
   // 反応の種類ごとの数（#62）。「すべて」の名札と「反応」の積み上げに使う。絞り込み・スパム除外はグラフと同じ。
-  const reactionsRef = useRef(reactions);
-  reactionsRef.current = reactions;
   const wantReactions = isDone && (series === "all" || reactions);
   // biome-ignore lint/correctness/useExhaustiveDependencies: reactTry は［もう一度］で読み直す合図
   useEffect(() => {
@@ -348,8 +346,8 @@ export function AnalysisView({ id }: { id: string }) {
       // 「すべて」の名札は出なくても困らないので、知らせるのは「反応」を選んでいるときだけ
       .catch(() => {
         if (stale) return;
+        // 「反応」ではグラフの枠に出す（お知らせとの二重にしない）。「すべて」の名札は出なくても困らない
         setReactError(true);
-        if (reactionsRef.current) setToast("反応の種類を読み込めませんでした。");
       });
     return () => {
       stale = true;
