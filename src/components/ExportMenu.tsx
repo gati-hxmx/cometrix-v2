@@ -257,6 +257,13 @@ export function ExportMenu({
               text={filtering ? "絞り込んだチャットを CSV で保存" : "チャットを CSV で保存"}
             />
           </a>
+          <a role="menuitem" href={`/compare?ids=${jobId}`} style={row}>
+            <RowText
+              icon="layers"
+              text="コラボを重ねて比べる"
+              note="ほかの配信と同じ時間軸でグラフを重ねる"
+            />
+          </a>
           <MenuButton
             icon="link"
             text="共有リンクをコピー"
