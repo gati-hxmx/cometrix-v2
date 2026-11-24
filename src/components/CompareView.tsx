@@ -239,10 +239,13 @@ export function CompareView({ initial }: { initial: CompareParams }) {
       adj: p.adj.filter((_, i) => i !== index),
     }));
     if (id === selectedId) setSelectedId(null);
+    // 軸の長さや基準が変わるので、縦線は消す
+    setCursor(null);
     setToast({
       message: `${s?.kind === "done" ? titleOf(s.meta) : "配信"} を外しました`,
       undo: () => {
         setParams(before);
+        setCursor(null);
         setToast(null);
       },
     });
