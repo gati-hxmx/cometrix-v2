@@ -76,3 +76,50 @@ export const chatBuckets = pgTable(
   },
   (t) => [primaryKey({ columns: [t.jobId, t.startSec] })],
 );
+
+// ログインした利用者（#7）。Google の利用者 ID（sub）で1人を決める。
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    googleSub: text("google_sub").notNull(),
+    email: text("email").notNull(),
+    name: text("name").notNull().default(""),
+    picture: text("picture"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("users_google_sub_uniq").on(t.googleSub)],
+);
+
+// ログインの鍵（#7）。Cookie の値そのものは保存せず、SHA-256 のハッシュ（16進）を id にする。
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: text("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("sessions_user_idx").on(t.userId)],
+);
+
+// 利用者と分析の紐づけ（#7）。分析は動画ごとに1つなので、同じ分析に何人も紐づく。
+export const userJobs = pgTable(
+  "user_jobs",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.jobId] }),
+    index("user_jobs_user_created_idx").on(t.userId, t.createdAt),
+  ],
+);

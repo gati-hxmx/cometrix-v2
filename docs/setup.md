@@ -75,3 +75,13 @@ LINE にしたい場合は、LINE Notify が 2025年3月に終了しているた
 
 - 連打の制限は、`x-forwarded-for` の先頭（なければ `x-real-ip`）を接続元として数えます。直接公開すると詐称できるので、必ず逆プロキシ（Caddy など）の背後に置き、そのヘッダを上書きさせてください。
 - 上限は環境変数で変えられます：`MAX_PENDING_JOBS`（初期 50）・`MAX_CONCURRENT_FETCH`（初期 2）・`RATE_LIMIT_MAX`（初期 10）・`RATE_LIMIT_WINDOW_SEC`（初期 60）。
+
+## 8. Google ログイン（#7）
+
+ログインを使うときだけ行います。設定しなければ、ヘッダーに［ログイン］は出ず、分析はそのまま使えます。
+
+1. [Google Cloud Console](https://console.cloud.google.com/) でプロジェクトを作り、「API とサービス」→「OAuth 同意画面」を設定する（種類は外部、スコープは `openid`・`email`・`profile` だけ）。
+2. 「認証情報」→「認証情報を作成」→「OAuth クライアント ID」→ 種類「ウェブ アプリケーション」。
+   - 承認済みのリダイレクト URI：`{APP_ORIGIN}/api/auth/callback`（手元は `http://localhost:3000/api/auth/callback`）
+3. できたクライアント ID と秘密を、サーバーの環境変数 `GOOGLE_CLIENT_ID`・`GOOGLE_CLIENT_SECRET` に入れる（手元は `.env`。コミットしない）。公開するときは `APP_ORIGIN`（例 `https://cometrix.example`）も入れる。
+4. DB のマイグレーション（`npm run db:migrate`、compose では migrate が自動で行う）で users・sessions・user_jobs の表ができる。
