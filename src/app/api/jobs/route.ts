@@ -1,3 +1,5 @@
+import { readCookie } from "../../../auth/google";
+import { linkJob, readSession, SESSION_COOKIE } from "../../../auth/session";
 import { getDb } from "../../../db/client";
 import { enqueue } from "../../../lib/jobs";
 import { BUSY_MESSAGE, checkRate, clientKey } from "../../../lib/limits";
@@ -27,6 +29,14 @@ export async function POST(req: Request) {
       { error: { code: res.code, message: FAILURE_MESSAGES.invalid_url } },
       { status: 400 },
     );
+  }
+  // ログインしていれば、その分析を自分に紐づける（#7）。紐づけに失敗しても分析は続ける
+  const token = readCookie(req.headers.get("cookie"), SESSION_COOKIE);
+  if (token) {
+    try {
+      const user = await readSession(getDb(), token);
+      if (user) await linkJob(getDb(), user.id, res.id);
+    } catch {}
   }
   return Response.json({ id: res.id }, { status: res.created ? 201 : 200 });
 }
