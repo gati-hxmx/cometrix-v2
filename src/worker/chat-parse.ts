@@ -1,17 +1,18 @@
-import type { ChatMessage } from "../lib/buckets";
+import type { ChatMessage, DonationKind } from "../lib/buckets";
 
 type Run = { text?: string; emoji?: { shortcuts?: string[]; emojiId?: string } };
 type Renderer = {
   authorName?: { simpleText?: string };
   message?: { runs?: Run[] };
+  purchaseAmountText?: { simpleText?: string };
 };
 
 const RENDERERS = [
-  "liveChatTextMessageRenderer",
-  "liveChatPaidMessageRenderer",
-  "liveChatPaidStickerRenderer",
-  "liveChatMembershipItemRenderer",
-] as const;
+  ["liveChatTextMessageRenderer", undefined],
+  ["liveChatPaidMessageRenderer", "paid"],
+  ["liveChatPaidStickerRenderer", "sticker"],
+  ["liveChatMembershipItemRenderer", "member"],
+] as const satisfies readonly (readonly [string, DonationKind | undefined])[];
 
 function textOf(r: Renderer): string {
   return (r.message?.runs ?? [])
@@ -39,9 +40,20 @@ export function parseLiveChat(jsonl: string): ChatMessage[] {
     }[]) {
       const item = action?.addChatItemAction?.item;
       if (!item) continue;
-      for (const key of RENDERERS) {
+      for (const [key, kind] of RENDERERS) {
         const r = item[key];
-        if (r) out.push({ offsetMs, author: r.authorName?.simpleText ?? "", text: textOf(r) });
+        if (!r) continue;
+        const m: ChatMessage = {
+          offsetMs,
+          author: r.authorName?.simpleText ?? "",
+          text: textOf(r),
+        };
+        if (kind) {
+          m.kind = kind;
+          const amount = r.purchaseAmountText?.simpleText;
+          if (amount) m.amount = amount;
+        }
+        out.push(m);
       }
     }
   }

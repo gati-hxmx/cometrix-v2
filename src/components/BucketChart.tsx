@@ -14,6 +14,7 @@ import {
   zoomRange,
 } from "../lib/chart-range";
 import type { Clip } from "../lib/clips";
+import { type Donation, groupDonations, kindText } from "../lib/donations";
 import {
   REACTION_KINDS,
   type ReactionBucket,
@@ -76,6 +77,7 @@ export function BucketChart({
   getTime,
   filtered = false,
   laugh = false,
+  donations = [],
   users = false,
   pickRange = false,
   onPickRange,
@@ -100,6 +102,8 @@ export function BucketChart({
   filtered?: boolean;
   /** 笑いのコメントだけの数（#41）。棒を2番目の系列色にし、文言を「笑い」にする。 */
   laugh?: boolean;
+  /** 投げ銭（#57）。あればグラフの上に印を出し、押すとその時刻へ飛ぶ。 */
+  donations?: Donation[];
   /** コメントした人の数（#55）。文言の単位を「人」にする。 */
   users?: boolean;
   /** 範囲をなぞって選ぶ（#58）。入れている間、グラフの上のなぞりは範囲の選択になる。 */
@@ -123,6 +127,7 @@ export function BucketChart({
   // 選んだ棒は元の区間の番号で持つ（拡大・移動しても同じ棒を指す）。
   const [selected, setSelected] = useState<number | null>(null);
   const [hover, setHover] = useState<number | null>(null);
+  const [markHover, setMarkHover] = useState<number | null>(null);
   const [rangeState, setRangeState] = useState<Range | null>(null);
   const [playSec, setPlaySec] = useState(0);
   const [clipId, setClipId] = useState<string | null>(null);
@@ -175,6 +180,14 @@ export function BucketChart({
   const fromSec = view[0]?.startSec ?? 0;
   const toSec = (view[view.length - 1]?.startSec ?? 0) + bucketSec;
   const xOf = (sec: number) => ((sec - fromSec) / (toSec - fromSec)) * 100;
+
+  const donationMarks = groupDonations(donations, {
+    bucketSec,
+    startBucket: range.start,
+    endBucket: range.end,
+    group,
+  });
+  const shownMark = donationMarks.find((m) => m.bar === markHover) ?? null;
 
   // 最新の値を、画面の外のイベント（ホイール）から使うための置き場。
   const latest = useRef({ range: exact, total });
@@ -833,6 +846,80 @@ export function BucketChart({
               </span>
             ))}
           </>
+        )}
+        {donationMarks.length > 0 && (
+          <div
+            data-testid="donation-marks"
+            style={{ position: "absolute", left: 0, right: 0, top: -32, height: 44, zIndex: 1 }}
+          >
+            {donationMarks.map((m) => (
+              <button
+                key={m.bar}
+                type="button"
+                aria-label={`${formatTime(m.sec)} 投げ銭 ${m.items.length} 件。押すとその時刻から再生します`}
+                onClick={() => onSeek(m.sec)}
+                onMouseEnter={() => setMarkHover(m.bar)}
+                onMouseLeave={() => setMarkHover(null)}
+                onFocus={() => setMarkHover(m.bar)}
+                onBlur={() => setMarkHover(null)}
+                style={{
+                  position: "absolute",
+                  left: `${((m.bar + 0.5) / bars.length) * 100}%`,
+                  top: 0,
+                  width: 44,
+                  height: 44,
+                  marginLeft: -22,
+                  padding: 0,
+                  border: 0,
+                  background: "transparent",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <span
+                  style={{
+                    display: "block",
+                    width: 12,
+                    height: 12,
+                    borderRadius: "50%",
+                    background: "var(--chart-3)",
+                    border: "2px solid var(--warn)",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </button>
+            ))}
+          </div>
+        )}
+        {shownMark && (
+          <div
+            role="presentation"
+            style={{
+              position: "absolute",
+              left: `${((shownMark.bar + 0.5) / bars.length) * 100}%`,
+              top: 4,
+              transform: `translateX(${shownMark.bar / bars.length < 0.3 ? "-10%" : shownMark.bar / bars.length > 0.7 ? "-90%" : "-50%"})`,
+              maxWidth: "min(260px, 80vw)",
+              padding: "6px 8px",
+              background: "var(--text)",
+              color: "var(--surface)",
+              borderRadius: 6,
+              fontSize: 12,
+              pointerEvents: "none",
+              zIndex: 3,
+              overflowWrap: "anywhere",
+            }}
+          >
+            {shownMark.items.slice(0, 3).map((d) => (
+              <div key={d.id}>
+                {formatTime(d.offsetMs / 1000)} ・ {d.author} ・ {kindText(d)}
+                {d.body ? ` ・ ${d.body.length > 40 ? `${d.body.slice(0, 40)}…` : d.body}` : ""}
+              </div>
+            ))}
+            {shownMark.items.length > 3 && <div>ほか {shownMark.items.length - 3} 件</div>}
+          </div>
         )}
         {tagPlaced.map((t) => (
           <span

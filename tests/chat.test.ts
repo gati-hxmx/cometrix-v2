@@ -41,7 +41,7 @@ test("live_chat のサンプルからコメントを読む（絵文字・スパ�
   const msgs = parseLiveChat(sample);
   expect(msgs).toHaveLength(5);
   expect(msgs[1]).toEqual({ offsetMs: 0, author: "alice", text: "こんにちは:smile:" });
-  expect(msgs[3]).toEqual({ offsetMs: 30000, author: "carol", text: "" });
+  expect(msgs[3]).toEqual({ offsetMs: 30000, author: "carol", text: "", kind: "paid" });
 });
 
 test("集計：開始前を除き、[0,30)・[30,60) の境界と空区間を連続で出す", () => {

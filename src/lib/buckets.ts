@@ -1,6 +1,17 @@
 export const BUCKET_SECONDS = 30;
 
-export type ChatMessage = { offsetMs: number; author: string; text: string };
+/** 投げ銭の種類：YouTube のスーパーチャット・ステッカー・メンバー加入、Twitch のビッツ。 */
+export type DonationKind = "paid" | "sticker" | "member" | "bits";
+export const DONATION_KINDS: readonly DonationKind[] = ["paid", "sticker", "member", "bits"];
+
+/** kind・amount は投げ銭のときだけ付く（通常コメントでは持たない）。 */
+export type ChatMessage = {
+  offsetMs: number;
+  author: string;
+  text: string;
+  kind?: DonationKind;
+  amount?: string;
+};
 export type Bucket = { startSec: number; count: number };
 
 /** 動画開始前（時刻が負）のコメントを除く。 */

@@ -131,7 +131,14 @@ async function clearMessages(db: Db, job: ClaimedJob) {
 }
 
 const toRows = (jobId: string, messages: ChatMessage[]) =>
-  messages.map((m) => ({ jobId, offsetMs: m.offsetMs, author: m.author, body: m.text }));
+  messages.map((m) => ({
+    jobId,
+    offsetMs: m.offsetMs,
+    author: m.author,
+    body: m.text,
+    kind: m.kind ?? null,
+    amount: m.amount ?? null,
+  }));
 
 /**
  * コメントを INSERT_CHUNK 件ずつ、別々のトランザクションで足す。1つずつ担当を確かめて updated_at を進めるので、

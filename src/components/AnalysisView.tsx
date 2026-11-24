@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Bucket } from "../lib/chart";
 import { EMPTY_FILTER, filterParams, isFiltering } from "../lib/chat-filter";
 import { cleanClips } from "../lib/clips";
+import type { Donation } from "../lib/donations";
 import { keyAction, stepPeak } from "../lib/keys";
 import { LEAD_DEFAULT, LEAD_KEY, type Lead, leadTarget, parseLead } from "../lib/lead";
 import { STEP_DEFAULT, seekTarget } from "../lib/playback";
@@ -269,6 +270,7 @@ export function AnalysisView({ id }: { id: string }) {
   const [picked, setPicked] = useState<{ start: number; end: number; n: number } | null>(null);
   const [mark, setMark] = useState<{ start: number; end: number } | null>(null);
   const [filtered, setFiltered] = useState<Bucket[] | null>(null);
+  const [donations, setDonations] = useState<Donation[]>([]);
   const [series, setSeries] = useState<"all" | "laugh" | "users" | "reactions">("all");
   // 反応の種類（#62）。「反応」のときは棒を種類で積み上げ、札で選んだ種類を下に置いて浮かせる。
   const reactions = series === "reactions";
@@ -327,6 +329,18 @@ export function AnalysisView({ id }: { id: string }) {
     };
   }, [filter, recount, laugh, spam, users, isDone, id, filtering]);
 
+  // 投げ銭の印（#57）。読めなくても分析は使えるので、失敗は黙って印なしにする。
+  useEffect(() => {
+    if (!isDone) return;
+    let stale = false;
+    fetch(`/api/jobs/${id}/donations`, { cache: "no-store" })
+      .then((r) => (r.ok ? (r.json() as Promise<Donation[]>) : []))
+      .then((d) => !stale && setDonations(d))
+      .catch(() => {});
+    return () => {
+      stale = true;
+    };
+  }, [isDone, id]);
   // 反応の種類ごとの数（#62）。「すべて」の名札と「反応」の積み上げに使う。絞り込み・スパム除外はグラフと同じ。
   const wantReactions = isDone && (series === "all" || reactions);
   // biome-ignore lint/correctness/useExhaustiveDependencies: reactTry は［もう一度］で読み直す合図
@@ -937,6 +951,7 @@ export function AnalysisView({ id }: { id: string }) {
                   getTime={getTime}
                   filtered={filtering && filtered !== null}
                   laugh={laugh && filtered !== null}
+                  donations={donations}
                   users={users && filtered !== null}
                   pickRange={pickMode && tab === "clip"}
                   onPickRange={(a, b) =>
@@ -1043,6 +1058,7 @@ export function AnalysisView({ id }: { id: string }) {
                   onSeek={seek}
                   onFilter={onFilter}
                   onError={setToast}
+                  hasDonations={donations.length > 0}
                   preset={preset ?? undefined}
                   top={
                     <SavedFilters

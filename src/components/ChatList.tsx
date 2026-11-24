@@ -1,5 +1,6 @@
 "use client";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import type { DonationKind } from "../lib/buckets";
 import { formatTime } from "../lib/chart";
 import {
   addRegex,
@@ -13,10 +14,18 @@ import {
   MAX_TERMS,
   nearestIndex,
 } from "../lib/chat-filter";
+import { KIND_LABEL } from "../lib/donations";
 
 export type { Filter };
 
-type Msg = { id: number; offsetMs: number; author: string; body: string };
+type Msg = {
+  id: number;
+  offsetMs: number;
+  author: string;
+  body: string;
+  kind?: DonationKind | null;
+  amount?: string | null;
+};
 
 const LIMIT = 100;
 const EDGE = 15;
@@ -221,10 +230,13 @@ export function ChatList({
   onSeek,
   onFilter,
   onError,
+  hasDonations = false,
   preset,
   top,
 }: {
   jobId: string;
+  /** 投げ銭がある分析のとき true（「投げ銭だけ」の切り替えを出す）。 */
+  hasDonations?: boolean;
   /** 保存した絞り込みを呼び出したとき（n が増えるたびに入れ替える、#67） */
   preset?: { filter: Filter; n: number };
   /** 見出しの下、絞り込み欄の上に置くもの（保存した絞り込みのチップ） */
@@ -234,6 +246,7 @@ export function ChatList({
   onFilter: (f: Filter) => void;
   onError: (message: string) => void;
 }) {
+  const [donationsOnly, setDonationsOnly] = useState(false);
   const [applied, setApplied] = useState<Filter>(EMPTY_FILTER);
   const [showMore, setShowMore] = useState(false);
   const [msgs, setMsgs] = useState<Msg[] | null>(null);
@@ -274,6 +287,7 @@ export function ChatList({
       const p = filterParams(applied);
       p.set("aroundSec", String(Math.floor(around)));
       p.set("limit", String(LIMIT));
+      if (donationsOnly) p.set("donations", "1");
       try {
         const res = await fetch(`/api/jobs/${jobId}/messages?${p}`, { cache: "no-store" });
         if (!res.ok) throw new Error(String(res.status));
@@ -288,7 +302,7 @@ export function ChatList({
         onError("チャットを読み込めませんでした。");
       }
     },
-    [jobId, applied, onError],
+    [jobId, applied, donationsOnly, onError],
   );
 
   // 絞り込みが変わったら、今の再生位置から取り直す。
@@ -336,7 +350,7 @@ export function ChatList({
     list.scrollTop = row.offsetTop - list.offsetTop - list.clientHeight / 2 + row.clientHeight / 2;
   }, [follow, activeId]);
 
-  const filtering = isFiltering(applied);
+  const filtering = isFiltering(applied) || donationsOnly;
   const usingRegex = applied.re.length > 0 || applied.xre.length > 0;
   const moreOpen = showMore || usingRegex;
 
@@ -355,6 +369,27 @@ export function ChatList({
             onChange={(list) => setApplied((cur) => ({ ...cur, [fd.key]: list }))}
           />
         ))}
+        {hasDonations && (
+          <button
+            type="button"
+            aria-pressed={donationsOnly}
+            onClick={() => setDonationsOnly((v) => !v)}
+            style={{
+              justifySelf: "start",
+              minHeight: 44,
+              padding: "0 12px",
+              font: "inherit",
+              fontWeight: 700,
+              cursor: "pointer",
+              borderRadius: "var(--radius)",
+              border: `1px solid ${donationsOnly ? "var(--accent-line)" : "var(--line)"}`,
+              background: donationsOnly ? "var(--accent-weak)" : "var(--surface)",
+              color: donationsOnly ? "var(--accent-dark)" : "var(--text)",
+            }}
+          >
+            投げ銭だけ
+          </button>
+        )}
         {/* 形（正規表現）の欄は使う人が限られるので、ふだんは閉じておく（18項目の1・3）。使っている間は閉じない。 */}
         {!usingRegex && (
           <button
@@ -378,7 +413,10 @@ export function ChatList({
         {filtering && (
           <button
             type="button"
-            onClick={() => setApplied(EMPTY_FILTER)}
+            onClick={() => {
+              setApplied(EMPTY_FILTER);
+              setDonationsOnly(false);
+            }}
             style={{
               minHeight: 44,
               border: "1px solid var(--line)",
@@ -483,6 +521,23 @@ export function ChatList({
                 <span style={{ color: "var(--muted)", flex: "0 0 auto", maxWidth: "35%" }}>
                   {m.author}
                 </span>
+                {m.kind && (
+                  <span
+                    style={{
+                      flex: "0 0 auto",
+                      padding: "0 6px",
+                      border: "1px solid var(--warn-line)",
+                      borderRadius: 6,
+                      background: "var(--warn-weak)",
+                      color: "var(--warn)",
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {KIND_LABEL[m.kind]}
+                    {m.amount ? ` ${m.amount}` : ""}
+                  </span>
+                )}
                 <span>{m.body}</span>
               </li>
             ))}
