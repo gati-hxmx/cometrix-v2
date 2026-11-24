@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { DonationKind } from "../lib/buckets";
 import { formatTime } from "../lib/chart";
 import {
@@ -231,10 +231,16 @@ export function ChatList({
   onFilter,
   onError,
   hasDonations = false,
+  preset,
+  top,
 }: {
   jobId: string;
   /** 投げ銭がある分析のとき true（「投げ銭だけ」の切り替えを出す）。 */
   hasDonations?: boolean;
+  /** 保存した絞り込みを呼び出したとき（n が増えるたびに入れ替える、#67） */
+  preset?: { filter: Filter; n: number };
+  /** 見出しの下、絞り込み欄の上に置くもの（保存した絞り込みのチップ） */
+  top?: ReactNode;
   getTime: () => number;
   onSeek: (sec: number) => void;
   onFilter: (f: Filter) => void;
@@ -260,6 +266,20 @@ export function ChatList({
   useEffect(() => {
     onFilter(applied);
   }, [applied, onFilter]);
+
+  // ChatList は札を切り替えても消さない（hidden で隠す）ので、n が増えたときだけ入れ替える。
+  // 作り直すと最後のチップを当て直すので、作り直す形に変えるときは n の扱いも見直す。
+  const presetN = preset?.n ?? 0;
+  const presetRef = useRef(preset);
+  presetRef.current = preset;
+  useEffect(() => {
+    const p = presetRef.current;
+    if (presetN > 0 && p) {
+      setApplied(p.filter);
+      // 形の欄を使う絞り込みなら、形の欄を開いて見せる
+      if (p.filter.re.length > 0 || p.filter.xre.length > 0) setShowMore(true);
+    }
+  }, [presetN]);
 
   const load = useCallback(
     async (around: number) => {
@@ -337,6 +357,7 @@ export function ChatList({
   return (
     <section className="chat-list" aria-label="チャット">
       <h2 style={{ fontSize: 16, margin: "0 0 8px" }}>チャット</h2>
+      {top}
       <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
         {FIELDS.filter((fd) => !fd.regex || moreOpen).map((fd) => (
           <TermField

@@ -19,6 +19,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       videoId: jobs.videoId,
       result: jobs.result,
       error: jobs.error,
+      // 共有リンクの鍵（#68）。この画面の ⋮ メニューで使う
+      shareToken: jobs.shareToken,
+      sharedAt: jobs.sharedAt,
       updatedAt: jobs.updatedAt,
     })
     .from(jobs)
@@ -26,12 +29,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (!job) return Response.json({ error: { code: "not_found" } }, { status: 404 });
   // 取得中は result に進み具合だけが入っている（#43）。結果は done のときだけ返す。
   const done = job.status === "done";
-  const { updatedAt, ...rest } = job;
+  const { updatedAt, sharedAt, shareToken, ...rest } = job;
   return Response.json({
     ...rest,
     result: done ? job.result : null,
     // done／failed のとき、あと何秒で分析し直せるか（#99）。
     retryAfterSec: done || job.status === "failed" ? retryAfterSec(updatedAt) : null,
     progress: job.status === "running" ? readProgress(job.result) : null,
+    // 共有しているときだけ鍵を返す（#68）
+    shareToken: sharedAt ? shareToken : null,
   });
 }

@@ -29,6 +29,8 @@
   --chart-1-weak: #dceafa;
   --chart-1-text: #2c5a96;
   --on-accent: #ffffff;
+  /* 重ねて出すもの（小さなメニュー）の影 */
+  --shadow: rgba(27, 36, 48, 0.18);
   color-scheme: light;
 }
 
@@ -62,6 +64,7 @@ html[data-theme="dark"] {
   --chart-1-weak: #1f3350;
   --chart-1-text: #a9cbf5;
   --on-accent: #0b1118;
+  --shadow: rgba(0, 0, 0, 0.55);
   color-scheme: dark;
 }
 
@@ -152,10 +155,31 @@ body {
   font-weight: 700;
   text-decoration: underline;
 }
+/* お知らせを重ねる入れ物（基本 8-1：3つまで、新しいものが上） */
+.toast-stack {
+  position: fixed;
+  z-index: 20;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast-stack .toast {
+  position: static;
+  width: auto;
+  pointer-events: auto;
+}
 @media (min-width: 900px) {
-  .toast {
+  .toast,
+  .toast-stack {
     left: auto;
     width: 380px;
+  }
+  .toast-stack .toast {
+    width: auto;
   }
 }
 @media (min-width: 1024px) {
@@ -186,5 +210,47 @@ body {
 @container (max-width: 533px) {
   .tw-open-narrow {
     display: block;
+  }
+}
+
+/* 小さなメニュー（部品 5-9）。押したボタンのすぐ下に、下の要素の上に重ねて出す。
+   位置の基準はボタンを置いた枠（position: relative の .menu-host）。ボタンは枠の右上にある。 */
+.menu-host {
+  position: relative;
+}
+.menu-pop {
+  position: absolute;
+  top: 64px;
+  right: 16px;
+  z-index: 20;
+  width: 22rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px var(--shadow);
+}
+.menu-pop [role="menuitem"]:hover:not([aria-disabled="true"]),
+.menu-pop [role="menuitem"]:focus-visible {
+  background: var(--surface-2);
+}
+/* スマホは横いっぱい（枠の左右の端＝画面の左右 16px） */
+@media (max-width: 599px) {
+  .menu-pop {
+    left: 0;
+    right: 0;
+    width: auto;
+  }
+}
+
+/* キー操作の案内（#66）。キーボードとマウスのある PC だけに出す。 */
+.key-hint {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) and (min-width: 1024px) {
+  .key-hint {
+    display: inline;
   }
 }

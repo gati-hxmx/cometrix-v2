@@ -1,5 +1,6 @@
 "use client";
 import { type KeyboardEvent, type PointerEvent, useEffect, useRef, useState } from "react";
+import { BUCKET_SECONDS } from "../lib/buckets";
 import { type Bucket, formatTime, groupBuckets, indexAtX, peakIndex } from "../lib/chart";
 import {
   clampRange,
@@ -16,6 +17,8 @@ import type { Clip } from "../lib/clips";
 import { type Donation, groupDonations, kindText } from "../lib/donations";
 
 const MAX_BARS = 120;
+/** キー操作の案内（#66）。J L の秒数はグラフの下の「‹ N 秒 ›」と同じ。 */
+const KEY_HINT = ["← → 前後の山", "スペース 再生／停止", "J L 戻る／進む", "M メモに時刻"];
 const HEIGHT = 140;
 const AXIS_LEFT = 36;
 const AXIS_BOTTOM = 22;
@@ -52,14 +55,21 @@ export function BucketChart({
   filtered = false,
   laugh = false,
   donations = [],
+  users = false,
   pickRange = false,
   onPickRange,
   mark = null,
   clips = [],
   lines = [],
+  keyHint = false,
+  onRange,
 }: {
   buckets: Bucket[];
+  /** 今出している範囲（区間の番号）が変わったとき。画像の保存に使う（#69） */
+  onRange?: (r: Range) => void;
   onSeek: (sec: number) => void;
+  /** キー操作の案内を出す（初めてのときだけ、#66） */
+  keyHint?: boolean;
   /** プレイヤーの再生位置（秒）。あれば約1秒ごとに読んで縦線で示す。 */
   getTime?: () => number;
   /** 絞り込み中。空の文言と棒の説明を「一致」にする。 */
@@ -68,6 +78,8 @@ export function BucketChart({
   laugh?: boolean;
   /** 投げ銭（#57）。あればグラフの上に印を出し、押すとその時刻へ飛ぶ。 */
   donations?: Donation[];
+  /** コメントした人の数（#55）。文言の単位を「人」にする。 */
+  users?: boolean;
   /** 範囲をなぞって選ぶ（#58）。入れている間、グラフの上のなぞりは範囲の選択になる。 */
   pickRange?: boolean;
   /** なぞり終えたときの始点・終点（秒、小さい順・1秒単位）。 */
@@ -111,7 +123,10 @@ export function BucketChart({
   const range = snapRange(exact, total);
   const zoomed = range.end - range.start < total;
   const view = buckets.slice(range.start, range.end);
-  const bars = groupBuckets(view, MAX_BARS);
+  useEffect(() => {
+    onRange?.({ start: range.start, end: range.end });
+  }, [onRange, range.start, range.end]);
+  const bars = groupBuckets(view, MAX_BARS, users ? "max" : "sum");
   const group = Math.max(1, Math.ceil(view.length / MAX_BARS));
   const peak = peakIndex(bars);
   const top = valueTicks(Math.max(1, ...bars.map((b) => b.count))).at(-1) ?? 1;
@@ -352,11 +367,26 @@ export function BucketChart({
 
   const ticks = timeTicks(fromSec, toSec, maxTickCount(plotWidth));
   const yTicks = valueTicks(Math.max(1, ...bars.map((b) => b.count)));
+  const unit = users ? "人" : "件";
   const countText = (n: number) =>
-    laugh ? `笑い ${n} 件` : filtered ? `一致 ${n} 件` : `${n} コメント`;
+    users
+      ? bars.length < view.length
+        ? `30秒あたり最多 ${n} 人`
+        : `${n} 人`
+      : laugh
+        ? `笑い ${n} 件`
+        : filtered
+          ? `一致 ${n} 件`
+          : `${n} コメント`;
+  // 人数の棒は30秒あたりの最多、言葉の線はまとめた区間の合計なので、まとめているときは区間の長さを添える。
+  const spanSec = group * BUCKET_SECONDS;
+  const span = spanSec >= 60 ? `${Math.round((spanSec / 60) * 10) / 10}分で` : `${spanSec}秒で`;
   const termText = (i: number) =>
     lines
-      .map((l, k) => `「${l.term}」${(lineBars[k][i]?.count ?? 0).toLocaleString("ja-JP")} 件`)
+      .map(
+        (l, k) =>
+          `「${l.term}」${users && group > 1 ? span : ""}${(lineBars[k][i]?.count ?? 0).toLocaleString("ja-JP")} 件`,
+      )
       .join("・");
   const detail = (b: Bucket, i: number) =>
     lines.length > 0 ? `${countText(b.count)}・${termText(i)}` : countText(b.count);
@@ -423,7 +453,7 @@ export function BucketChart({
             whiteSpace: "nowrap",
           }}
         >
-          件
+          {unit}
         </span>
         {yTicks.map((v) => (
           <div
@@ -475,6 +505,7 @@ export function BucketChart({
         {/* biome-ignore lint/a11y/noStaticElementInteractions: 中の棒（button）で起きた操作をまとめて受ける入れ物。それ自体は操作の対象ではない */}
         <div
           ref={plot}
+          data-chart-plot
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -794,7 +825,10 @@ export function BucketChart({
               zIndex: 2,
             }}
           >
-            {formatTime(bars[hover].startSec)} ・ {bars[hover].count.toLocaleString("ja-JP")} 件
+            {formatTime(bars[hover].startSec)} ・{" "}
+            {users
+              ? countText(bars[hover].count)
+              : `${bars[hover].count.toLocaleString("ja-JP")} ${unit}`}
             {lines.length > 0 && ` ・ ${termText(hover)}`}
           </div>
         )}
@@ -830,6 +864,7 @@ export function BucketChart({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          flexWrap: "wrap",
           gap: 8,
           minHeight: zoomed ? 44 : undefined,
           fontSize: 12,
@@ -837,6 +872,18 @@ export function BucketChart({
         }}
       >
         <span>Ctrl＋ホイール・2本指で拡大、拡大中はドラッグで移動</span>
+        {/* キー操作（#66）はキーボードのある PC だけに、一度使うまで案内する（部品 4-8） */}
+        {keyHint && (
+          // 狭いときは区切りの所でだけ折る（言葉の途中で折らない）
+          <span className="key-hint" style={{ flexBasis: "100%", order: 2 }}>
+            {KEY_HINT.map((t, i) => (
+              <span key={t} style={{ whiteSpace: "nowrap" }}>
+                {i > 0 && "・"}
+                {t}
+              </span>
+            ))}
+          </span>
+        )}
         {zoomed && (
           <button
             type="button"

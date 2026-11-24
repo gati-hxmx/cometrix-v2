@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   addTerm,
   EMPTY_FILTER,
+  exactUserTerm,
   type Filter,
   fillBuckets,
   filterParams,
@@ -52,6 +53,24 @@ describe("matches", () => {
   test("% や _ は文字として扱う", () => {
     expect(matches(m, f({ q: ["100%"] }))).toBe(true);
     expect(matches(m, f({ q: ["_"] }))).toBe(false);
+  });
+  test('"名前" と囲むと名前が同じ人だけ（#64）', () => {
+    expect(matches(m, f({ user: ['"taro_yamada"'] }))).toBe(true);
+    expect(matches(m, f({ user: ['"taro"'] }))).toBe(false);
+    expect(matches({ ...m, author: "Taro_Yamada2" }, f({ user: ['"taro_yamada"'] }))).toBe(false);
+    expect(matches(m, f({ xuser: ['"taro_yamada"'] }))).toBe(false);
+    expect(matches(m, f({ xuser: ['"taro"'] }))).toBe(true);
+    // 引用符だけ・片方だけは、ふつうの部分一致
+    expect(matches({ ...m, author: 'a"b' }, f({ user: ['"'] }))).toBe(true);
+    expect(matches(m, f({ user: ['""'] }))).toBe(false);
+  });
+  test("名前の一覧から押した語は小文字の引用符つき。前後の空白は残し、空・長すぎる名前は押せない", () => {
+    expect(exactUserTerm("Taro")).toBe('"taro"');
+    expect(exactUserTerm("　全角さん")).toBe('"　全角さん"');
+    expect(matches({ author: "　全角さん", body: "w" }, f({ user: ['"　全角さん"'] }))).toBe(true);
+    expect(exactUserTerm("")).toBeNull();
+    expect(exactUserTerm("a".repeat(98))).toHaveLength(100);
+    expect(exactUserTerm("a".repeat(99))).toBeNull();
   });
   test("指定なしは全部一致", () => expect(matches(m, EMPTY_FILTER)).toBe(true));
 });

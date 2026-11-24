@@ -10,9 +10,16 @@ const MESSAGES = {
 } as const;
 
 /** URL を入れて分析を始める入力欄。トップと分析画面（PC）で共通。 */
-export function UrlForm({ autoFocus = false }: { autoFocus?: boolean }) {
+export function UrlForm({
+  autoFocus = false,
+  initial = "",
+}: {
+  autoFocus?: boolean;
+  /** 最初から入れておく URL（共有の受け先、#70） */
+  initial?: string;
+}) {
   const router = useRouter();
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 

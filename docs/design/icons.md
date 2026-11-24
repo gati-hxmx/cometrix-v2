@@ -37,8 +37,11 @@
 | 編集（その場で入力） | `pencil` |
 | 削除 | `trash-2` |
 | コピー | `copy` |
+| 共有リンク | `link` |
+| 共有をやめる | `link-2-off` |
 | 送る | `send` |
 | 表示：一覧 | `list` |
 | 表示：表 | `table` |
+| Cometrix のアプリのアイコン（ホーム画面、#70） | `chart-column`（`--accent-weak` の角丸の四角に `--accent` の線。仮のもの） |
 
 （アプリごとの意味をここに足す）

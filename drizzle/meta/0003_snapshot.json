@@ -1,5 +1,5 @@
 {
-  "id": "67385a9e-2a18-430c-969b-7a90c049c642",
+  "id": "13991523-577c-415a-88a3-2596f1a68b54",
   "prevId": "0d159f43-5253-4991-8f2b-7f658c2c7ba5",
   "version": "7",
   "dialect": "postgresql",
@@ -101,18 +101,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "amount": {
-          "name": "amount",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -215,6 +203,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "share_token": {
+          "name": "share_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "shared_at": {
+          "name": "shared_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -270,6 +270,21 @@
           ],
           "isUnique": true,
           "where": "\"jobs\".\"status\" <> 'failed'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "jobs_share_token_uniq": {
+          "name": "jobs_share_token_uniq",
+          "columns": [
+            {
+              "expression": "share_token",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}
