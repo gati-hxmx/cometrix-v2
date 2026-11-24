@@ -143,5 +143,8 @@ export function safeNext(next: string | null | undefined): string {
   // 念のため URL として読み、自分のサイトの中に留まるかを確かめる
   const base = "http://cometrix.invalid";
   const u = new URL(next, base);
-  return u.origin === base ? `${u.pathname}${u.search}${u.hash}` : "/";
+  if (u.origin !== base) return "/";
+  // "/.//evil" などは読んだあとに "//evil" になるので、読んだ結果もう一度確かめる
+  const path = `${u.pathname}${u.search}${u.hash}`;
+  return path.startsWith("//") || path.startsWith("/\\") ? "/" : path;
 }

@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { currentUser } from "../auth/current";
 import { isLoginConfigured } from "../auth/google";
+import { LoginLink } from "./LoginLink";
 import { ThemeToggle } from "./ThemeToggle";
 
 const headerButton = {
@@ -61,9 +63,15 @@ export async function Header() {
             </Link>
           ) : (
             showLogin && (
-              <Link href="/login" style={headerButton}>
-                ログイン
-              </Link>
+              <Suspense
+                fallback={
+                  <Link href="/login" style={headerButton}>
+                    ログイン
+                  </Link>
+                }
+              >
+                <LoginLink style={headerButton} />
+              </Suspense>
             )
           )}
           <ThemeToggle />

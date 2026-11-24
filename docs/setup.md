@@ -83,5 +83,5 @@ LINE にしたい場合は、LINE Notify が 2025年3月に終了しているた
 1. [Google Cloud Console](https://console.cloud.google.com/) でプロジェクトを作り、「API とサービス」→「OAuth 同意画面」を設定する（種類は外部、スコープは `openid`・`email`・`profile` だけ）。
 2. 「認証情報」→「認証情報を作成」→「OAuth クライアント ID」→ 種類「ウェブ アプリケーション」。
    - 承認済みのリダイレクト URI：`{APP_ORIGIN}/api/auth/callback`（手元は `http://localhost:3000/api/auth/callback`）
-3. できたクライアント ID と秘密を、サーバーの環境変数 `GOOGLE_CLIENT_ID`・`GOOGLE_CLIENT_SECRET` に入れる（手元は `.env`。コミットしない）。公開するときは `APP_ORIGIN`（例 `https://cometrix.example`）も入れる。
+3. できたクライアント ID と秘密を、サーバーの環境変数 `GOOGLE_CLIENT_ID`・`GOOGLE_CLIENT_SECRET` に入れる（手元は `.env`。コミットしない）。手元以外で開くとき（公開・LAN の別の端末から）は `APP_ORIGIN`（例 `https://cometrix.example`）が**必須**。ないと Host から URL を作るため、nginx の後ろでは Google に登録した URI と合わずログインできない・ログアウトが断られることがある。
 4. DB のマイグレーション（`npm run db:migrate`、compose では migrate が自動で行う）で users・sessions・user_jobs の表ができる。

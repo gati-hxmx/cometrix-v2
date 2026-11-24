@@ -54,9 +54,15 @@ export async function GET(req: Request) {
 
   const profile = await exchangeCode(config, code, flow.verifier);
   if (!profile) return fail();
-  const db = getDb();
-  const userId = await upsertUser(db, profile);
-  const { token } = await createSession(db, userId);
+  let token: string;
+  try {
+    const db = getDb();
+    const userId = await upsertUser(db, profile);
+    token = (await createSession(db, userId)).token;
+  } catch {
+    // DB に届かないときもログインせずに /login へ戻す
+    return fail();
+  }
 
   const next = safeNext(typeof flow.next === "string" ? flow.next : null);
   const headers = new Headers({ location: `${origin}${next}` });

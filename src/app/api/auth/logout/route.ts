@@ -10,7 +10,11 @@ export async function POST(req: Request) {
   const origin = requestOrigin(req.headers);
   if (req.headers.get("origin") !== origin)
     return Response.json({ error: { code: "forbidden" } }, { status: 403 });
-  await deleteSession(getDb(), readCookie(req.headers.get("cookie"), SESSION_COOKIE));
+  try {
+    await deleteSession(getDb(), readCookie(req.headers.get("cookie"), SESSION_COOKIE));
+  } catch {
+    // DB に届かなくても、この端末の Cookie は消してログアウトさせる
+  }
   return new Response(null, {
     status: 303,
     headers: {

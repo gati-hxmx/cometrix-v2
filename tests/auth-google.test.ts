@@ -117,6 +117,11 @@ describe("戻る先", () => {
       "https://evil.example",
       "/\nSet-Cookie:x",
       "javascript:alert(1)",
+      // 読んだあとに "//" で始まるもの（. や .. がたたまれる）
+      "/.//evil.example",
+      "/..//evil.example",
+      "/%2e//evil.example",
+      "/a/..//evil.example",
     ])
       expect(safeNext(bad)).toBe("/");
   });

@@ -158,6 +158,11 @@ describe.skipIf(!url)("ログイン（Postgres、#7）", () => {
         headers: { origin, cookie: `cx_session=${token}` },
       });
     expect((await logout.POST(req("https://evil.example"))).status).toBe(403);
+    const noOrigin = new Request("http://localhost:3000/api/auth/logout", {
+      method: "POST",
+      headers: { cookie: `cx_session=${token}` },
+    });
+    expect((await logout.POST(noOrigin)).status).toBe(403);
     expect(await s.readSession(db, token)).not.toBeNull();
     const res = await logout.POST(req("http://localhost:3000"));
     expect(res.status).toBe(303);

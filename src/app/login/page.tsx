@@ -43,12 +43,12 @@ export default async function LoginPage({
           {configured ? (
             <>
               <p style={{ margin: "0 0 20px", color: "var(--muted)" }}>
-                ログインすると、分析した配信を自分のものとして残せます。ログインしなくても分析は使えます。
+                ログインすると、分析した配信を履歴に残せます（履歴は今後追加します）。ログインしなくても分析は使えます。
               </p>
               <a
                 href={`/api/auth/google?next=${encodeURIComponent(next)}`}
                 style={{
-                  display: "flex",
+                  display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
                   minHeight: 48,
