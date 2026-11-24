@@ -254,3 +254,36 @@ body {
     display: inline;
   }
 }
+
+/* 見どころ再生（#61）：スマホでグラフが画面の外に出ている間だけ下に出す列。PC は動画とグラフが近いので出さない */
+.reel-mini {
+  display: grid;
+}
+/* 見どころの数と長さのメニュー（部品 5-9） */
+.reel-pop {
+  right: 0;
+  width: min(20rem, calc(100vw - 32px));
+}
+/* 1024px 未満の見出しの列は「あと N 秒」を省いて、「3 / 7・時刻・‹ › ［止める］」を1行に収める */
+@media (max-width: 1023px) {
+  .reel-remain {
+    display: none;
+  }
+}
+@media (max-width: 599px) {
+  /* スマホのメニューは［見どころ再生］と「上位 7・30 秒」の2つの幅にそろえる（画面の左右にはみ出さない） */
+  .reel-pop {
+    left: 0;
+    width: auto;
+  }
+}
+@media (min-width: 1024px) {
+  .reel-mini {
+    display: none;
+  }
+}
+@media (max-width: 1023px) {
+  .toast-stack.above-reel-mini {
+    bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+  }
+}

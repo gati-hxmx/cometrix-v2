@@ -14,6 +14,7 @@ import {
   zoomRange,
 } from "../lib/chart-range";
 import type { Clip } from "../lib/clips";
+import { stripLayout } from "../lib/reel";
 
 const MAX_BARS = 120;
 /** キー操作の案内（#66）。J L の秒数はグラフの下の「‹ N 秒 ›」と同じ。 */
@@ -24,6 +25,21 @@ const AXIS_BOTTOM = 22;
 const AXIS_RIGHT = 16;
 const AXIS_RIGHT_LINES = 36;
 const DRAG_THRESHOLD = 4;
+/** 見どころの番号の札（#61）：押せる大きさ（縦横 44px） */
+const STRIP_ROW = 44;
+const STRIP_W = 44;
+
+export type ReelMark = { sec: number; n: number; state: "done" | "now" | "todo" };
+/** 見どころ再生（#61）でグラフに出すもの */
+export type ChartReel = {
+  /** いま再生している範囲。再生していなければ null */
+  window: { start: number; end: number } | null;
+  /** 済んだ範囲（棒を少し薄い青にする） */
+  played: { start: number; end: number }[];
+  /** グラフの下の番号の札 */
+  marks: ReelMark[];
+  onPick: (n: number) => void;
+};
 
 const stepButton = {
   flex: "0 0 auto",
@@ -61,6 +77,7 @@ export function BucketChart({
   lines = [],
   keyHint = false,
   onRange,
+  reel,
 }: {
   buckets: Bucket[];
   /** 今出している範囲（区間の番号）が変わったとき。画像の保存に使う（#69） */
@@ -86,6 +103,8 @@ export function BucketChart({
   clips?: Clip[];
   /** 重ねる言葉の線（#53）。棒と同じ区間の数。縦軸は右側に別に取る。 */
   lines?: { term: string; color: string; buckets: Bucket[] }[];
+  /** 見どころ再生（#61）：いまの範囲の塗り・済んだ棒・下の番号の札 */
+  reel?: ChartReel;
 }) {
   const total = buckets.length;
   // 選んだ棒は元の区間の番号で持つ（拡大・移動しても同じ棒を指す）。
@@ -381,6 +400,25 @@ export function BucketChart({
   const visibleClips = clips.filter((c) => c.offsetSec >= fromSec && c.offsetSec < toSec);
   const openClip = clips.find((c) => c.id === clipId) ?? null;
   const playX = playSec > 0 && playSec >= fromSec && playSec < toSec ? xOf(playSec) : null;
+  // 見どころ再生（#61）。棒は「まとめた区間」なので、区間の始まりが範囲に入るかで決める。
+  const groupSec = group * bucketSec;
+  const overlaps = (b: Bucket, w: { start: number; end: number }) =>
+    b.startSec < w.end && b.startSec + groupSec > w.start;
+  const inWindow = (b: Bucket) => (reel?.window ? overlaps(b, reel.window) : false);
+  const wasPlayed = (b: Bucket) => reel?.played.some((w) => overlaps(b, w)) ?? false;
+  const win = reel?.window;
+  const marks = (reel?.marks ?? []).filter((m) => m.sec >= fromSec && m.sec < toSec);
+  // 幅が測れるまでは1段に並べる（測れてから段が減って高さが跳ねないように）
+  const markAt =
+    plotWidth > 0
+      ? stripLayout(
+          marks.map((m) => (xOf(m.sec) / 100) * plotWidth),
+          STRIP_W + 4,
+          plotWidth,
+        )
+      : marks.map(() => ({ row: 0, x: 0 }));
+  const stripHeight =
+    marks.length > 0 ? (Math.max(...markAt.map((p) => p.row)) + 1) * STRIP_ROW : 0;
 
   return (
     <div>
@@ -489,6 +527,22 @@ export function BucketChart({
             {formatTime(t)}
           </span>
         ))}
+        {win && win.end > fromSec && win.start < toSec && (
+          <div
+            aria-hidden
+            data-testid="reel-window"
+            style={{
+              position: "absolute",
+              top: -6,
+              bottom: 0,
+              left: `${Math.max(0, xOf(win.start))}%`,
+              width: `${Math.max(0.6, Math.min(100, xOf(win.end)) - Math.max(0, xOf(win.start)))}%`,
+              background: "var(--accent-weak)",
+              borderRadius: 2,
+              pointerEvents: "none",
+            }}
+          />
+        )}
         {/* biome-ignore lint/a11y/noStaticElementInteractions: 中の棒（button）で起きた操作をまとめて受ける入れ物。それ自体は操作の対象ではない */}
         <div
           ref={plot}
@@ -546,11 +600,13 @@ export function BucketChart({
                   background:
                     selectedBar === i
                       ? "var(--accent-dark)"
-                      : i === peak
+                      : i === peak || inWindow(b)
                         ? "var(--accent)"
-                        : laugh
-                          ? "var(--chart-2)"
-                          : "var(--chart-1)",
+                        : wasPlayed(b)
+                          ? "var(--accent-line)"
+                          : laugh
+                            ? "var(--chart-2)"
+                            : "var(--chart-1)",
                   filter: hover === i ? "brightness(0.8)" : undefined,
                   outline: selectedBar === i ? "2px solid var(--accent-dark)" : "none",
                   outlineOffset: 1,
@@ -746,6 +802,73 @@ export function BucketChart({
           </div>
         )}
       </div>
+      {marks.length > 0 && (
+        <ol
+          aria-label="見どころ（押すとその山へ）"
+          data-testid="reel-strip"
+          style={{
+            listStyle: "none",
+            padding: 0,
+            position: "relative",
+            margin: `0 ${lines.length > 0 ? AXIS_RIGHT_LINES : AXIS_RIGHT}px 4px ${AXIS_LEFT}px`,
+            height: stripHeight,
+          }}
+        >
+          {marks.map((m, k) => (
+            <li
+              key={m.sec}
+              style={{
+                position: "absolute",
+                // 幅が測れるまでは山の位置、測れたら重ならないようずらした位置
+                left: plotWidth > 0 ? markAt[k].x : `${xOf(m.sec)}%`,
+                top: markAt[k].row * STRIP_ROW,
+                transform: "translateX(-50%)",
+              }}
+            >
+              <button
+                type="button"
+                aria-label={`見どころ ${m.n + 1}（${formatTime(m.sec)}）`}
+                aria-current={m.state === "now" ? "true" : undefined}
+                onClick={() => reel?.onPick(m.n)}
+                style={{
+                  width: STRIP_W,
+                  height: STRIP_ROW,
+                  padding: 0,
+                  border: 0,
+                  background: "transparent",
+                  cursor: "pointer",
+                  display: "grid",
+                  placeItems: "center",
+                }}
+              >
+                <span
+                  style={{
+                    minWidth: 28,
+                    height: 26,
+                    padding: "0 4px",
+                    borderRadius: 7,
+                    display: "grid",
+                    placeItems: "center",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    fontVariantNumeric: "tabular-nums",
+                    border: "1.5px solid var(--accent)",
+                    background:
+                      m.state === "now"
+                        ? "var(--accent)"
+                        : m.state === "done"
+                          ? "var(--accent-weak)"
+                          : "var(--surface)",
+                    color: m.state === "now" ? "var(--surface)" : "var(--accent-dark)",
+                  }}
+                >
+                  {m.n + 1}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
       {openClip && (
         <p
           aria-live="polite"
