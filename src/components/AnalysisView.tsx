@@ -274,6 +274,8 @@ export function AnalysisView({ id }: { id: string }) {
   const reactions = series === "reactions";
   const [reactFocus, setReactFocus] = useState<ReactionKey | null>(null);
   const [reactRows, setReactRows] = useState<ReactionBucket[] | null>(null);
+  const [reactError, setReactError] = useState(false);
+  const [reactTry, setReactTry] = useState(0);
   const laugh = series === "laugh";
   // コメントした人の数（同じ人の連投は1人。#55）。
   const users = series === "users";
@@ -329,10 +331,12 @@ export function AnalysisView({ id }: { id: string }) {
   const reactionsRef = useRef(reactions);
   reactionsRef.current = reactions;
   const wantReactions = isDone && (series === "all" || reactions);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reactTry は［もう一度］で読み直す合図
   useEffect(() => {
     if (!wantReactions) return;
     let stale = false;
     setReactRows(null);
+    setReactError(false);
     const p = filterParams(filter);
     if (spam) p.set("spam", "1");
     fetch(`/api/jobs/${id}/reactions?${p}`, { cache: "no-store" })
@@ -342,13 +346,15 @@ export function AnalysisView({ id }: { id: string }) {
       })
       .then((b) => !stale && setReactRows(b))
       // 「すべて」の名札は出なくても困らないので、知らせるのは「反応」を選んでいるときだけ
-      .catch(
-        () => !stale && reactionsRef.current && setToast("反応の種類を読み込めませんでした。"),
-      );
+      .catch(() => {
+        if (stale) return;
+        setReactError(true);
+        if (reactionsRef.current) setToast("反応の種類を読み込めませんでした。");
+      });
     return () => {
       stale = true;
     };
-  }, [wantReactions, filter, spam, id]);
+  }, [wantReactions, filter, spam, id, reactTry]);
   useEffect(() => {
     if (!reactions) setReactFocus(null);
   }, [reactions]);
@@ -644,6 +650,8 @@ export function AnalysisView({ id }: { id: string }) {
             t.kind !== null && (!reactFocus || t.kind === reactFocus),
         )
     : [];
+  // 積み上げは、反応の数と棒の数（絞り込み中は絞り込んだ数）が両方そろってから
+  const reactReady = reactions && reactRows !== null && (!recount || filtered !== null);
   const reactTotals = useMemo(() => (reactRows ? reactionTotals(reactRows) : null), [reactRows]);
   const reelStart = peaks.length > 0 && (
     <ReelStart
@@ -877,7 +885,51 @@ export function AnalysisView({ id }: { id: string }) {
                   / 全 {total.toLocaleString("ja-JP")} 件
                 </p>
               )}
-              {state.kind === "job" && state.buckets ? (
+              {reactions && state.kind === "job" && state.buckets && !reactReady ? (
+                // 反応の数がそろうまで、青い棒を「反応の種類」の見出しの下に出さない
+                <div
+                  role={reactError ? "alert" : "status"}
+                  style={{
+                    height: 162,
+                    display: "grid",
+                    placeItems: "center",
+                    alignContent: "center",
+                    gap: 8,
+                    background: "var(--surface-2)",
+                    borderRadius: 6,
+                    color: "var(--muted)",
+                    textAlign: "center",
+                    padding: 12,
+                  }}
+                >
+                  {reactError ? (
+                    <>
+                      <span style={{ color: "var(--text)" }}>
+                        ⚠ 反応の種類を読み込めませんでした
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setReactTry((n) => n + 1)}
+                        style={{
+                          minWidth: 44,
+                          minHeight: 44,
+                          padding: "0 16px",
+                          border: "1px solid var(--line)",
+                          borderRadius: "var(--radius)",
+                          background: "var(--surface)",
+                          color: "var(--text)",
+                          font: "inherit",
+                          cursor: "pointer",
+                        }}
+                      >
+                        もう一度
+                      </button>
+                    </>
+                  ) : (
+                    "反応の種類を数えています…"
+                  )}
+                </div>
+              ) : state.kind === "job" && state.buckets ? (
                 <BucketChart
                   key={id}
                   keyHint={!keysSeen}
@@ -897,7 +949,7 @@ export function AnalysisView({ id }: { id: string }) {
                   lines={lines}
                   reel={done?.result ? chartReel : undefined}
                   stack={
-                    reactions && reactRows ? { rows: reactRows, focus: reactFocus } : undefined
+                    reactReady && reactRows ? { rows: reactRows, focus: reactFocus } : undefined
                   }
                   tags={chartTags}
                 />

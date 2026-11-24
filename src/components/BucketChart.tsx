@@ -409,7 +409,18 @@ export function BucketChart({
       .join("・");
   const detail = (b: Bucket, i: number) =>
     lines.length > 0 ? `${countText(b.count)}・${termText(i)}` : countText(b.count);
-  const label = (b: Bucket, i: number) => `${formatTime(b.startSec)} から ${detail(b, i)}`;
+  // 積み上げのときは、色だけにせず種類ごとの数も読み上げる（基本 8、colors.md 3-1）
+  const kindsText = (i: number) =>
+    stackBars
+      ? stackBars
+          .filter((s) => (s.bars[i]?.count ?? 0) > 0)
+          .map((s) => `${reactionName(s.kind)} ${s.bars[i].count}`)
+          .join("・")
+      : "";
+  const label = (b: Bucket, i: number) => {
+    const kinds = kindsText(i);
+    return `${formatTime(b.startSec)} から ${detail(b, i)}${kinds ? `（${kinds}）` : ""}`;
+  };
   const visibleClips = clips.filter((c) => c.offsetSec >= fromSec && c.offsetSec < toSec);
   const openClip = clips.find((c) => c.id === clipId) ?? null;
   const playX = playSec > 0 && playSec >= fromSec && playSec < toSec ? xOf(playSec) : null;

@@ -75,12 +75,19 @@ export function ReactionChips({
           </button>
         ))}
       </fieldset>
-      {focus && totals && (
-        <p aria-live="polite" style={{ margin: "6px 0 0", color: "var(--muted)", fontSize: 13 }}>
-          {reactionName(focus)} {totals[focus].toLocaleString("ja-JP")} 件（全体の{" "}
-          {sharePercent(totals[focus], all)}%）
-        </p>
-      )}
+      {/* 読み上げの入れ物は出したままにし、中の文だけ替える（出すと同時に書くと読まれないことがある） */}
+      <p
+        aria-live="polite"
+        style={{
+          margin: focus && totals ? "6px 0 0" : 0,
+          color: "var(--muted)",
+          fontSize: 13,
+        }}
+      >
+        {focus && totals
+          ? `${reactionName(focus)} ${totals[focus].toLocaleString("ja-JP")} 件（全体の ${sharePercent(totals[focus], all)}%）`
+          : ""}
+      </p>
     </div>
   );
 }
