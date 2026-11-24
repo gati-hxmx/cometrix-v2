@@ -32,6 +32,12 @@ const PATHS = {
       <line x1="2" x2="22" y1="2" y2="22" />
     </>
   ),
+  // 見どころ再生を始める（#61）
+  play: <polygon points="6 3 20 12 6 21 6 3" />,
+  // 見どころ再生を止める（#61）
+  square: <rect width="14" height="14" x="5" y="5" rx="2" />,
+  // 選ぶメニューを開く（#61）
+  "chevron-down": <path d="m6 9 6 6 6-6" />,
 } as const;
 
 export type IconName = keyof typeof PATHS;
