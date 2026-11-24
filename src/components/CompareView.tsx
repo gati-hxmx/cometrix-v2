@@ -79,10 +79,12 @@ const POLL_MS = 3000;
 export function CompareView({ initial }: { initial: CompareParams }) {
   const [params, setParams] = useState<CompareParams>(initial);
   const [streams, setStreams] = useState<Record<string, Stream>>({});
-  const [selected, setSelected] = useState(0);
+  // プレイヤーで見ている配信。並びの位置ではなく ID で持つ（前の配信の読み込みが終わっても替わらない）
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [cursor, setCursor] = useState<number | null>(null);
   const [mode, setMode] = useState<"n" | "r">("n");
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; undo?: () => void } | null>(null);
+  const notify = useCallback((message: string) => setToast({ message }), []);
   const player = useRef<PlayerHandle>(null);
   const pendingSeek = useRef<number | null>(null);
 
@@ -95,6 +97,8 @@ export function CompareView({ initial }: { initial: CompareParams }) {
 
   // 各配信を読み込む。分析中のものは終わるまで数秒ごとに見に行く
   const idsKey = params.ids.join(",");
+  const streamsRef = useRef(streams);
+  streamsRef.current = streams;
   useEffect(() => {
     let stop = false;
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -132,7 +136,11 @@ export function CompareView({ initial }: { initial: CompareParams }) {
         timers.push(setTimeout(() => load(id), POLL_MS * 2));
       }
     };
-    for (const id of idsKey ? idsKey.split(",") : []) load(id);
+    // 読み込み済み（終わった・見つからない・失敗）の配信は、足す・外すたびに読み直さない
+    for (const id of idsKey ? idsKey.split(",") : []) {
+      const k = streamsRef.current[id]?.kind;
+      if (k !== "done" && k !== "missing" && k !== "failed") load(id);
+    }
     return () => {
       stop = true;
       for (const t of timers) clearTimeout(t);
@@ -172,7 +180,10 @@ export function CompareView({ initial }: { initial: CompareParams }) {
     color: COLORS[r.index % COLORS.length],
     values: ratio ? normalize(raw[j]) : raw[j],
   }));
-  const sel = Math.min(selected, Math.max(0, ready.length - 1));
+  const sel = Math.max(
+    0,
+    ready.findIndex((r) => r.id === selectedId),
+  );
   const current = ready[sel];
 
   // 選んだ配信を、縦線の時刻から再生する
@@ -183,15 +194,15 @@ export function CompareView({ initial }: { initial: CompareParams }) {
       if (k === null) return;
       const t = videoSecAt(k * 30, shifts[j], r.counts.length * 30);
       if (t === null) {
-        setToast(`${titleOf(r.meta)} はこの時刻に配信していません`);
+        notify(`${titleOf(r.meta)} はこの時刻に配信していません`);
         return;
       }
       if (j !== sel) {
         pendingSeek.current = t;
-        setSelected(j);
+        setSelectedId(r.id);
       } else player.current?.seek(t);
     },
-    [ready, shifts, sel],
+    [ready, shifts, sel, notify],
   );
   // 配信を切り替えたら、新しいプレイヤーに時刻を渡す（準備前の seek は準備後に効く）
   // biome-ignore lint/correctness/useExhaustiveDependencies: 動画が替わったときだけ
@@ -200,7 +211,7 @@ export function CompareView({ initial }: { initial: CompareParams }) {
     const t = pendingSeek.current;
     pendingSeek.current = null;
     player.current?.seek(t);
-  }, [current?.meta.videoId]);
+  }, [current?.id]);
 
   const switchTo = (j: number) => {
     if (cursor !== null) {
@@ -208,7 +219,7 @@ export function CompareView({ initial }: { initial: CompareParams }) {
       const t = r ? videoSecAt(cursor * 30, shifts[j], r.counts.length * 30) : null;
       if (t !== null) pendingSeek.current = t;
     }
-    setSelected(j);
+    setSelectedId(ready[j]?.id ?? null);
   };
 
   const adjust = (index: number, delta: number) =>
@@ -218,20 +229,35 @@ export function CompareView({ initial }: { initial: CompareParams }) {
         i === index ? Math.max(-ADJ_LIMIT, Math.min(ADJ_LIMIT, a + delta)) : a,
       ),
     }));
+  // 外したら、お知らせの［元に戻す］で同じ位置・同じずれに戻せる（確かめのダイアログは出さない）
   const remove = (index: number) => {
+    const before = params;
+    const id = params.ids[index];
+    const s = streams[id];
     setParams((p) => ({
       ids: p.ids.filter((_, i) => i !== index),
       adj: p.adj.filter((_, i) => i !== index),
     }));
-    setSelected(0);
-    setCursor(null);
+    if (id === selectedId) setSelectedId(null);
+    setToast({
+      message: `${s?.kind === "done" ? titleOf(s.meta) : "配信"} を外しました`,
+      undo: () => {
+        setParams(before);
+        setToast(null);
+      },
+    });
   };
-  const add = (id: string) =>
+  const add = (id: string) => {
+    if (params.ids.includes(id)) {
+      notify("その配信はもう重ねています");
+      return;
+    }
     setParams((p) =>
       p.ids.includes(id) || p.ids.length >= COMPARE_MAX
         ? p
         : { ids: [...p.ids, id], adj: [...p.adj, 0] },
     );
+  };
 
   const first = ready
     .map((r) => r.meta.result?.streamedAt)
@@ -269,7 +295,7 @@ export function CompareView({ initial }: { initial: CompareParams }) {
               />
               <div style={{ marginTop: 8 }}>
                 <Player
-                  key={current.meta.videoId}
+                  key={current.id}
                   ref={player}
                   platform={current.meta.platform}
                   videoId={current.meta.videoId}
@@ -291,7 +317,7 @@ export function CompareView({ initial }: { initial: CompareParams }) {
             {ready.length < 2 ? (
               <p style={{ margin: "12px 0 0", color: "var(--muted)" }}>
                 {params.ids.length < 2
-                  ? "重ねる配信を、右の一覧（スマホは下）から 2 本以上にしてください。"
+                  ? "重ねる配信を 2 本以上にしてください（PC は右、スマホは下の一覧から足せます）。"
                   : "分析が終わった配信が 2 本そろうと、ここに重ねて出します。"}
               </p>
             ) : (
@@ -352,6 +378,7 @@ export function CompareView({ initial }: { initial: CompareParams }) {
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
                           }}
+                          title={titleOf(r.meta)}
                         >
                           {titleOf(r.meta)}
                         </span>
@@ -495,10 +522,15 @@ export function CompareView({ initial }: { initial: CompareParams }) {
               );
             })}
           </ul>
-          {params.ids.length < COMPARE_MAX && <AddStream onAdd={add} onError={setToast} />}
+          {params.ids.length < COMPARE_MAX && <AddStream onAdd={add} onError={notify} />}
         </aside>
       </div>
-      <Toast message={toast} onClose={() => setToast(null)} />
+      <Toast
+        message={toast?.message ?? null}
+        kind={toast?.undo ? "done" : undefined}
+        onUndo={toast?.undo}
+        onClose={() => setToast(null)}
+      />
     </main>
   );
 }
@@ -550,11 +582,16 @@ function StreamPicker({
     };
   }, [open]);
   const onMenuKey = (e: React.KeyboardEvent) => {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
     e.preventDefault();
     const items = [...(box.current?.querySelectorAll<HTMLElement>('[role="menuitemradio"]') ?? [])];
     const at = items.indexOf(document.activeElement as HTMLElement);
-    const next = (at + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+    const next =
+      e.key === "Home"
+        ? 0
+        : e.key === "End"
+          ? items.length - 1
+          : (at + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
     items[next]?.focus();
   };
   return (
@@ -605,9 +642,12 @@ function StreamPicker({
         <div
           role="menu"
           aria-label="プレイヤーで見る配信"
-          className="menu-pop"
+          className="menu-pop picker-pop"
           onKeyDown={onMenuKey}
-          style={{ left: 52, right: 52, top: "calc(100% + 4px)" }}
+          onBlur={(e) => {
+            // Tab でメニューの外へ出たら閉じる
+            if (!box.current?.contains(e.relatedTarget as Node | null)) setOpen(false);
+          }}
         >
           {names.map((name, j) => (
             <button
@@ -623,22 +663,18 @@ function StreamPicker({
               style={{
                 ...btn,
                 width: "100%",
+                minHeight: 48,
                 border: 0,
-                borderRadius: 0,
                 justifyContent: "flex-start",
+                textAlign: "left",
                 background: j === value ? "var(--accent-weak)" : "transparent",
               }}
             >
               <Dot color={colors[j]} />
-              <span
-                style={{
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {name}
+              {/* 長い名前は、メニューの中では省かずに2行まで出す（部品 5-9） */}
+              <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>{name}</span>
+              <span aria-hidden style={{ width: 20, color: "var(--accent-dark)", fontWeight: 700 }}>
+                {j === value ? "✓" : ""}
               </span>
             </button>
           ))}

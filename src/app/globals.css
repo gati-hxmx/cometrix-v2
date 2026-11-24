@@ -256,8 +256,17 @@ body {
   box-shadow: 0 8px 24px var(--shadow);
 }
 .menu-pop [role="menuitem"]:hover:not([aria-disabled="true"]),
-.menu-pop [role="menuitem"]:focus-visible {
+.menu-pop [role="menuitem"]:focus-visible,
+.menu-pop [role="menuitemradio"]:hover,
+.menu-pop [role="menuitemradio"]:focus-visible {
   background: var(--surface-2);
+}
+/* 「‹ 名前 ▾ ›」の名前 ▾ のメニュー（#63）：名前のボタンの真下に、ボタンと同じ幅で */
+.picker-pop {
+  top: calc(100% + 4px);
+  left: 52px;
+  right: 52px;
+  width: auto;
 }
 /* スマホは横いっぱい（枠の左右の端＝画面の左右 16px） */
 @media (max-width: 599px) {

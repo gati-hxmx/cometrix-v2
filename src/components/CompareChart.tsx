@@ -103,6 +103,8 @@ export function CompareChart({
         aria-valuetext={cursor === null ? "時刻を選んでいません" : formatTime(cursor * BUCKET)}
         onKeyDown={onKey}
         onPointerDown={(e) => {
+          // 指はスクロールかもしれないので、離したときに決める
+          if (e.pointerType === "touch") return;
           e.currentTarget.setPointerCapture?.(e.pointerId);
           pickAt(e.clientX, false);
         }}

@@ -83,7 +83,9 @@ describe("30 秒ごとの数を置き直す", () => {
   });
   test("videoSecAt：共通の時刻から動画の時刻へ。範囲外は null", () => {
     expect(videoSecAt(100, 41, 600)).toBe(59);
-    expect(videoSecAt(30, 41, 600)).toBeNull();
+    expect(videoSecAt(0, 41, 600)).toBeNull();
+    // 区間の途中で始まった配信は、その区間を押すと 0 秒から
+    expect(videoSecAt(30, 41, 600)).toBe(0);
     expect(videoSecAt(700, 41, 600)).toBeNull();
   });
 });

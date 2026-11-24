@@ -155,10 +155,14 @@ export function normalize(series: (number | null)[]): (number | null)[] {
   return series.map((v) => (v === null ? null : max > 0 ? (v / max) * 100 : 0));
 }
 
-/** 共通の時間軸の sec 秒は、shift 秒あとに始まった配信の動画の何秒目か。範囲外は null */
+/**
+ * 共通の時間軸の sec 秒から始まる 30 秒は、shift 秒あとに始まった配信の動画の何秒目か。
+ * 区間の途中で配信が始まったときは動画の 0 秒（線と札に数が出ている区間は押せば再生できる）。重ならなければ null
+ */
 export function videoSecAt(sec: number, shift: number, lengthSec: number): number | null {
   const t = sec - shift;
-  return t < 0 || t >= lengthSec ? null : t;
+  if (t + BUCKET <= 0 || t >= lengthSec) return null;
+  return Math.max(0, t);
 }
 
 /** 札や小窓に出す値。件数は四捨五入、割合は「%」 */
