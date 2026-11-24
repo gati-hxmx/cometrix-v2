@@ -3,6 +3,7 @@ import {
   parseReel,
   REEL_DEFAULT,
   REEL_GRACE_MS,
+  reelDurationSec,
   reelKeyValue,
   reelPlan,
   reelSettingText,
@@ -139,4 +140,17 @@ test("動画が最後まで来て止まったら、次へ（最後なら終わ�
   expect(reelStep(two, 1, 20, REEL_GRACE_MS, true)).toEqual({ kind: "done" });
   // 動かした直後は、前の動画の「終わった」を見ない
   expect(reelStep(two, 0, 590, 500, true)).toEqual({ kind: "stay", remain: 20 });
+});
+
+test("最後の区間がない古い分析は長さの上限を付けず、山の位置で再生する", () => {
+  expect(reelDurationSec(3570)).toBe(3600);
+  expect(reelDurationSec(0)).toBe(30);
+  expect(reelDurationSec(undefined)).toBeUndefined();
+  expect(reelDurationSec(null)).toBeUndefined();
+  expect(reelDurationSec(Number.NaN)).toBeUndefined();
+  const items = reelPlan(toc, { count: 7, len: 30 }, 5, reelDurationSec(undefined));
+  expect(items.map((i) => i.start)).toEqual(
+    reelPlan(toc, { count: 7, len: 30 }, 5).map((i) => i.start),
+  );
+  expect(items.every((i) => i.start > 0 || i.end > 30)).toBe(true);
 });

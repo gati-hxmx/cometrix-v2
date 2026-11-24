@@ -15,6 +15,7 @@ import {
   REEL_KEY,
   type ReelItem,
   type ReelSettings,
+  reelDurationSec,
   reelKeyValue,
   reelPlan,
   reelStep,
@@ -505,10 +506,9 @@ export function AnalysisView({ id }: { id: string }) {
     },
     [seek],
   );
-  const durationSec =
-    state.kind === "job" && state.job.result
-      ? (state.job.result.lastBucketSec ?? 0) + 30
-      : undefined;
+  const durationSec = reelDurationSec(
+    state.kind === "job" ? state.job.result?.lastBucketSec : undefined,
+  );
   const startReel = useCallback(() => {
     const items = reelPlan(peaks, reelSettings, lead, durationSec);
     if (items.length > 0) reelGo(items, 0, true);

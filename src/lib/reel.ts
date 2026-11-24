@@ -46,6 +46,16 @@ export function reelKeyValue(s: ReelSettings): string {
 }
 
 /** 目次の山から、再生する並びを作る。範囲が前の範囲と重なっても、そのまま並べる（山ごとに少し前から見る）。 */
+/**
+ * 動画の長さ（最後の区間＋30 秒）。最後の区間を保存していない古い分析では長さがわからないので、
+ * 上限を付けない（undefined）。0:29 に寄せてしまわないため。
+ */
+export function reelDurationSec(lastBucketSec: number | null | undefined): number | undefined {
+  return typeof lastBucketSec === "number" && Number.isFinite(lastBucketSec) && lastBucketSec >= 0
+    ? lastBucketSec + 30
+    : undefined;
+}
+
 export function reelPlan(
   entries: TocEntry[],
   s: ReelSettings,
