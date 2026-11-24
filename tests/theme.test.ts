@@ -44,6 +44,13 @@ const PAIRS: [string, string][] = [
   ["ok", "ok-weak"],
   ["chart-1-text", "chart-1-weak"],
   ["sat", "surface"],
+  // 反応の名札（#62）
+  ["r-text", "r-laugh"],
+  ["r-text", "r-clap"],
+  ["r-text", "r-wow"],
+  ["r-text", "r-cute"],
+  ["r-text", "r-god"],
+  ["r-text", "r-cry"],
 ];
 
 describe("配色のコントラスト（本文・補足は 4.5:1 以上）", () => {

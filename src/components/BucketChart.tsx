@@ -14,6 +14,13 @@ import {
   zoomRange,
 } from "../lib/chart-range";
 import type { Clip } from "../lib/clips";
+import {
+  REACTION_KINDS,
+  type ReactionBucket,
+  type ReactionKey,
+  reactionColor,
+  reactionName,
+} from "../lib/reactions";
 import { stripLayout } from "../lib/reel";
 
 const MAX_BARS = 120;
@@ -78,6 +85,8 @@ export function BucketChart({
   keyHint = false,
   onRange,
   reel,
+  stack,
+  tags = [],
 }: {
   buckets: Bucket[];
   /** 今出している範囲（区間の番号）が変わったとき。画像の保存に使う（#69） */
@@ -105,6 +114,10 @@ export function BucketChart({
   lines?: { term: string; color: string; buckets: Bucket[] }[];
   /** 見どころ再生（#61）：いまの範囲の塗り・済んだ棒・下の番号の札 */
   reel?: ChartReel;
+  /** 反応の種類で積み上げる（#62）。focus の種類をいちばん下に置き、ほかを薄くする */
+  stack?: { rows: ReactionBucket[]; focus: ReactionKey | null };
+  /** 山の上の反応の名札（#62）。先のものから、重ならないものだけ出す */
+  tags?: { sec: number; kind: ReactionKey }[];
 }) {
   const total = buckets.length;
   // 選んだ棒は元の区間の番号で持つ（拡大・移動しても同じ棒を指す）。
@@ -396,10 +409,52 @@ export function BucketChart({
       .join("・");
   const detail = (b: Bucket, i: number) =>
     lines.length > 0 ? `${countText(b.count)}・${termText(i)}` : countText(b.count);
-  const label = (b: Bucket, i: number) => `${formatTime(b.startSec)} から ${detail(b, i)}`;
+  // 積み上げのときは、色だけにせず種類ごとの数も読み上げる（基本 8、colors.md 3-1）
+  const kindsText = (i: number) =>
+    stackBars
+      ? stackBars
+          .filter((s) => (s.bars[i]?.count ?? 0) > 0)
+          .map((s) => `${reactionName(s.kind)} ${s.bars[i].count}`)
+          .join("・")
+      : "";
+  const label = (b: Bucket, i: number) => {
+    const kinds = kindsText(i);
+    return `${formatTime(b.startSec)} から ${detail(b, i)}${kinds ? `（${kinds}）` : ""}`;
+  };
   const visibleClips = clips.filter((c) => c.offsetSec >= fromSec && c.offsetSec < toSec);
   const openClip = clips.find((c) => c.id === clipId) ?? null;
   const playX = playSec > 0 && playSec >= fromSec && playSec < toSec ? xOf(playSec) : null;
+  // 反応の積み上げ（#62）：棒と同じ範囲・同じまとめ方で種類ごとに数える。選んだ種類を下に。
+  const stackOrder = stack?.focus
+    ? [stack.focus, ...REACTION_KINDS.filter((k) => k !== stack.focus)]
+    : REACTION_KINDS;
+  const stackBars = (() => {
+    if (!stack) return null;
+    const bySec = new Map(stack.rows.map((r) => [r.startSec, r]));
+    return stackOrder.map((k) => ({
+      kind: k,
+      bars: groupBuckets(
+        view.map((b) => ({ startSec: b.startSec, count: bySec.get(b.startSec)?.[k] ?? 0 })),
+        MAX_BARS,
+        "sum",
+      ),
+    }));
+  })();
+  // 名札：区間の番号から棒を決め、重ならないものだけ（先のものを優先）。
+  const tagPlaced: { sec: number; kind: ReactionKey; bar: number }[] = [];
+  if (plotWidth > 0) {
+    const used: { x: number; w: number }[] = [];
+    for (const t of tags) {
+      const raw = Math.round((t.sec - (buckets[0]?.startSec ?? 0)) / bucketSec);
+      const bar = barOf(raw);
+      if (bar === null || !bars[bar]) continue;
+      const x = ((bar + 0.5) / bars.length) * plotWidth;
+      const w = reactionName(t.kind).length * 12 + 16;
+      if (used.some((u) => Math.abs(u.x - x) < (u.w + w) / 2 + 4)) continue;
+      used.push({ x, w });
+      tagPlaced.push({ ...t, bar });
+    }
+  }
   // 見どころ再生（#61）。棒は「まとめた区間」なので、区間の始まりが範囲に入るかで決める。
   const groupSec = group * bucketSec;
   const overlaps = (b: Bucket, w: { start: number; end: number }) =>
@@ -594,11 +649,14 @@ export function BucketChart({
             >
               <span
                 style={{
-                  display: "block",
+                  display: stackBars ? "flex" : "block",
+                  flexDirection: "column-reverse",
+                  overflow: "hidden",
                   width: "100%",
                   height: `${Math.max(2, (b.count / top) * 100)}%`,
-                  background:
-                    selectedBar === i
+                  background: stackBars
+                    ? "transparent"
+                    : selectedBar === i
                       ? "var(--accent-dark)"
                       : i === peak || inWindow(b)
                         ? "var(--accent)"
@@ -612,7 +670,24 @@ export function BucketChart({
                   outlineOffset: 1,
                   borderRadius: "2px 2px 0 0",
                 }}
-              />
+              >
+                {stackBars?.map(({ kind, bars: kb }) => {
+                  const n = kb[i]?.count ?? 0;
+                  return n > 0 && b.count > 0 ? (
+                    <span
+                      key={kind}
+                      data-kind={kind}
+                      style={{
+                        display: "block",
+                        flex: "none",
+                        height: `${(n / b.count) * 100}%`,
+                        background: reactionColor(kind),
+                        opacity: stack?.focus && stack.focus !== kind ? 0.22 : 1,
+                      }}
+                    />
+                  ) : null;
+                })}
+              </span>
             </button>
           ))}
         </div>
@@ -759,6 +834,30 @@ export function BucketChart({
             ))}
           </>
         )}
+        {tagPlaced.map((t) => (
+          <span
+            key={t.sec}
+            aria-hidden
+            data-testid="reaction-tag"
+            style={{
+              position: "absolute",
+              left: `${((t.bar + 0.5) / bars.length) * 100}%`,
+              bottom: `calc(${Math.max(2, (bars[t.bar].count / top) * 100)}% + 4px)`,
+              transform: "translateX(-50%)",
+              padding: "1px 8px",
+              borderRadius: 999,
+              background: reactionColor(t.kind),
+              color: "var(--r-text)",
+              fontSize: 11,
+              fontWeight: 700,
+              whiteSpace: "nowrap",
+              pointerEvents: "none",
+              zIndex: 1,
+            }}
+          >
+            {reactionName(t.kind)}
+          </span>
+        ))}
         {playX !== null && (
           <div
             aria-hidden

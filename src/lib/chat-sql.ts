@@ -2,6 +2,7 @@ import { type SQL, sql } from "drizzle-orm";
 import { chatMessages } from "../db/schema";
 import { exactName, type Filter } from "./chat-filter";
 import { LAUGH_PATTERN, LAUGH_TRIM } from "./laugh";
+import { REACTIONS } from "./reactions";
 import { SPAM_LONG, SPAM_TRIM, SPAM_WINDOW_MS } from "./spam";
 
 /** 絞り込みを SQL の条件にする（matches と同じ規則。語はパラメータとして渡す）。 */
@@ -39,6 +40,13 @@ export function filterConds(f: Filter): SQL[] {
 /** 笑いのコメントだけにする条件（isLaugh と同じ規則。前後の空白・改行・全角スペースを除いてから見る）。 */
 export function laughCond(): SQL {
   return sql`btrim(${chatMessages.body}, ${LAUGH_TRIM}) ~* ${LAUGH_PATTERN}`;
+}
+
+/** コメントの反応の種類（classifyReaction と同じ規則・同じ並び）。どれにも当たらなければ 'other'。 */
+export function reactionCase(): SQL {
+  const body = sql`btrim(${chatMessages.body}, ${LAUGH_TRIM})`;
+  const whens = REACTIONS.map((r) => sql`when ${body} ~* ${r.pattern} then ${r.key}`);
+  return sql`(case ${sql.join(whens, sql` `)} else 'other' end)`;
 }
 
 /** 言葉を含むコメントだけにする条件（hasTerm と同じ規則。term は normalizeKeyword 済み）。 */

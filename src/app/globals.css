@@ -29,6 +29,16 @@
   --chart-1-weak: #dceafa;
   --chart-1-text: #2c5a96;
   --on-accent: #ffffff;
+  /* 反応の種類の色（#62、docs/design/colors.md の 3-1）。積み上げの棒・名札・札の印に使う */
+  --r-laugh: #80c8b8;
+  --r-clap: #f2b88e;
+  --r-wow: #c4b0e4;
+  --r-cute: #f0aac4;
+  --r-god: #e3cf78;
+  --r-cry: #9fc9ec;
+  --r-other: #d5dde8;
+  /* 反応の色の上の字（名札） */
+  --r-text: #1b2430;
   /* 重ねて出すもの（小さなメニュー）の影 */
   --shadow: rgba(27, 36, 48, 0.18);
   color-scheme: light;
@@ -64,6 +74,14 @@ html[data-theme="dark"] {
   --chart-1-weak: #1f3350;
   --chart-1-text: #a9cbf5;
   --on-accent: #0b1118;
+  --r-laugh: #4a9a8c;
+  --r-clap: #c98a5e;
+  --r-wow: #8a76b4;
+  --r-cute: #b56f8b;
+  --r-god: #a8963f;
+  --r-cry: #5a8ab8;
+  --r-other: #2e3d50;
+  --r-text: #0f1620;
   --shadow: rgba(0, 0, 0, 0.55);
   color-scheme: dark;
 }
@@ -271,6 +289,10 @@ body {
   }
 }
 @media (max-width: 599px) {
+  /* 反応の札の件数はスマホでは省く（#62） */
+  .reaction-count {
+    display: none;
+  }
   /* スマホのメニューは［見どころ再生］と「上位 7・30 秒」の2つの幅にそろえる（画面の左右にはみ出さない） */
   .reel-pop {
     left: 0;
