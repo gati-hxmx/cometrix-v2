@@ -29,6 +29,21 @@
   --chart-1-weak: #dceafa;
   --chart-1-text: #2c5a96;
   --on-accent: #ffffff;
+  /* 反応の種類の色（#62、docs/design/colors.md の 3-1）。積み上げの棒・名札・札の印に使う */
+  --r-laugh: #80c8b8;
+  --r-clap: #f2b88e;
+  --r-wow: #c4b0e4;
+  --r-cute: #f0aac4;
+  --r-god: #e3cf78;
+  --r-cry: #9fc9ec;
+  --r-other: #d5dde8;
+  /* コラボを重ねて比べる（#63）の配信ごとの線。グラフの系列色と同じ並び（docs/design/colors.md 3-2） */
+  --v-1: var(--chart-1);
+  --v-2: var(--chart-2);
+  --v-3: var(--chart-3);
+  --v-4: var(--r-wow);
+  /* 反応の色の上の字（名札） */
+  --r-text: #1b2430;
   /* 重ねて出すもの（小さなメニュー）の影 */
   --shadow: rgba(27, 36, 48, 0.18);
   color-scheme: light;
@@ -64,6 +79,14 @@ html[data-theme="dark"] {
   --chart-1-weak: #1f3350;
   --chart-1-text: #a9cbf5;
   --on-accent: #0b1118;
+  --r-laugh: #4a9a8c;
+  --r-clap: #c98a5e;
+  --r-wow: #8a76b4;
+  --r-cute: #b56f8b;
+  --r-god: #a8963f;
+  --r-cry: #5a8ab8;
+  --r-other: #2e3d50;
+  --r-text: #0f1620;
   --shadow: rgba(0, 0, 0, 0.55);
   color-scheme: dark;
 }
@@ -233,8 +256,17 @@ body {
   box-shadow: 0 8px 24px var(--shadow);
 }
 .menu-pop [role="menuitem"]:hover:not([aria-disabled="true"]),
-.menu-pop [role="menuitem"]:focus-visible {
+.menu-pop [role="menuitem"]:focus-visible,
+.menu-pop [role="menuitemradio"]:hover,
+.menu-pop [role="menuitemradio"]:focus-visible {
   background: var(--surface-2);
+}
+/* 「‹ 名前 ▾ ›」の名前 ▾ のメニュー（#63）：名前のボタンの真下に、ボタンと同じ幅で */
+.picker-pop {
+  top: calc(100% + 4px);
+  left: 52px;
+  right: 52px;
+  width: auto;
 }
 /* スマホは横いっぱい（枠の左右の端＝画面の左右 16px） */
 @media (max-width: 599px) {
@@ -252,5 +284,71 @@ body {
 @media (hover: hover) and (pointer: fine) and (min-width: 1024px) {
   .key-hint {
     display: inline;
+  }
+}
+
+/* 見どころ再生（#61）：スマホでグラフが画面の外に出ている間だけ下に出す列。PC は動画とグラフが近いので出さない */
+.reel-mini {
+  display: grid;
+}
+/* 見どころの数と長さのメニュー（部品 5-9） */
+.reel-pop {
+  right: 0;
+  width: min(20rem, calc(100vw - 32px));
+}
+/* 1024px 未満の見出しの列は「あと N 秒」を省いて、「3 / 7・時刻・‹ › ［止める］」を1行に収める */
+@media (max-width: 1023px) {
+  .reel-remain {
+    display: none;
+  }
+}
+@media (max-width: 599px) {
+  /* 反応の札の件数はスマホでは省く（#62） */
+  .reaction-count {
+    display: none;
+  }
+  /* スマホのメニューは［見どころ再生］と「上位 7・30 秒」の2つの幅にそろえる（画面の左右にはみ出さない） */
+  .reel-pop {
+    left: 0;
+    width: auto;
+  }
+}
+@media (min-width: 1024px) {
+  .reel-mini {
+    display: none;
+  }
+}
+@media (max-width: 1023px) {
+  .toast-stack.above-reel-mini {
+    bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* コラボを重ねて比べる（#63、docs/screens/compare.md）：PC は左に動画とグラフ、右に重ねる配信の一覧。スマホは1列 */
+@media (min-width: 1024px) {
+  .compare-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 16px;
+    align-items: start;
+  }
+  .compare-side {
+    position: sticky;
+    top: 16px;
+  }
+  /* PC は数をグラフの中の小窓に出すので、名前の札には出さない */
+  .compare-chip-count {
+    display: none;
+  }
+}
+@media (max-width: 1023px) {
+  /* スマホ・タブレットは小窓を出さず、名前の札に数を出す */
+  .compare-tip {
+    display: none;
+  }
+}
+@media (max-width: 599px) {
+  .compare-head-note {
+    display: none;
   }
 }

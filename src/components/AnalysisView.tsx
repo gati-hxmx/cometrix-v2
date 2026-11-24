@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Bucket } from "../lib/chart";
 import { EMPTY_FILTER, filterParams, isFiltering } from "../lib/chat-filter";
 import { cleanClips } from "../lib/clips";
@@ -10,8 +10,26 @@ import { keyAction, stepPeak } from "../lib/keys";
 import { LEAD_DEFAULT, LEAD_KEY, type Lead, leadTarget, parseLead } from "../lib/lead";
 import { STEP_DEFAULT, seekTarget } from "../lib/playback";
 import { type FetchProgress, progressLabel, progressPercent } from "../lib/progress";
+import {
+  dominantReaction,
+  type ReactionBucket,
+  type ReactionKey,
+  reactionTotals,
+} from "../lib/reactions";
+import {
+  parseReel,
+  REEL_DEFAULT,
+  REEL_KEY,
+  type ReelItem,
+  type ReelSettings,
+  reelDurationSec,
+  reelKeyValue,
+  reelPlan,
+  reelStep,
+  reelTotalSec,
+} from "../lib/reel";
 import { pickPeaks } from "../lib/toc";
-import { BucketChart } from "./BucketChart";
+import { BucketChart, type ChartReel } from "./BucketChart";
 import { ChatList, type Filter } from "./ChatList";
 import { ClipPanel } from "./ClipPanel";
 import { ExportMenu } from "./ExportMenu";
@@ -20,7 +38,9 @@ import { MemoPanel } from "./MemoPanel";
 import { PeoplePanel } from "./PeoplePanel";
 import { PlaybackBar } from "./PlaybackBar";
 import { Player } from "./Player";
+import { ReactionChips } from "./ReactionChips";
 import { ReanalyzeButton } from "./ReanalyzeButton";
+import { ReelMini, type ReelNow, ReelStart, ReelStatus } from "./ReelControls";
 import { SavedFilters } from "./SavedFilters";
 import { Segmented } from "./Segmented";
 import { Toast } from "./Toast";
@@ -89,6 +109,7 @@ const SERIES = [
   { key: "all", name: "すべて" },
   { key: "laugh", name: "笑い" },
   { key: "users", name: "人数" },
+  { key: "reactions", name: "反応" },
 ] as const;
 const SPAM = [
   { key: "on", name: "スパム除外" },
@@ -250,7 +271,13 @@ export function AnalysisView({ id }: { id: string }) {
   const [mark, setMark] = useState<{ start: number; end: number } | null>(null);
   const [filtered, setFiltered] = useState<Bucket[] | null>(null);
   const [donations, setDonations] = useState<Donation[]>([]);
-  const [series, setSeries] = useState<"all" | "laugh" | "users">("all");
+  const [series, setSeries] = useState<"all" | "laugh" | "users" | "reactions">("all");
+  // 反応の種類（#62）。「反応」のときは棒を種類で積み上げ、札で選んだ種類を下に置いて浮かせる。
+  const reactions = series === "reactions";
+  const [reactFocus, setReactFocus] = useState<ReactionKey | null>(null);
+  const [reactRows, setReactRows] = useState<ReactionBucket[] | null>(null);
+  const [reactError, setReactError] = useState(false);
+  const [reactTry, setReactTry] = useState(0);
   const laugh = series === "laugh";
   // コメントした人の数（同じ人の連投は1人。#55）。
   const users = series === "users";
@@ -314,6 +341,35 @@ export function AnalysisView({ id }: { id: string }) {
       stale = true;
     };
   }, [isDone, id]);
+  // 反応の種類ごとの数（#62）。「すべて」の名札と「反応」の積み上げに使う。絞り込み・スパム除外はグラフと同じ。
+  const wantReactions = isDone && (series === "all" || reactions);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reactTry は［もう一度］で読み直す合図
+  useEffect(() => {
+    if (!wantReactions) return;
+    let stale = false;
+    setReactRows(null);
+    setReactError(false);
+    const p = filterParams(filter);
+    if (spam) p.set("spam", "1");
+    fetch(`/api/jobs/${id}/reactions?${p}`, { cache: "no-store" })
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json() as Promise<ReactionBucket[]>;
+      })
+      .then((b) => !stale && setReactRows(b))
+      // 「すべて」の名札は出なくても困らないので、知らせるのは「反応」を選んでいるときだけ
+      .catch(() => {
+        if (stale) return;
+        // 「反応」ではグラフの枠に出す（お知らせとの二重にしない）。「すべて」の名札は出なくても困らない
+        setReactError(true);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [wantReactions, filter, spam, id, reactTry]);
+  useEffect(() => {
+    if (!reactions) setReactFocus(null);
+  }, [reactions]);
 
   // 重ねる言葉ごとに、その言葉を含むコメントの数を読む（#53）。読み込み中の言葉は二重に読まない。
   const loading = useRef(new Set<string>());
@@ -476,6 +532,148 @@ export function AnalysisView({ id }: { id: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // 見どころを続けて再生（#61、docs/screens/analysis.md「見どころ再生」）。目次の山を数の多い順に、少し前から決まった秒数ずつ。
+  const peaks = useMemo(() => pickPeaks(shown ?? []), [shown]);
+  const [reelSettings, setReelSettingsState] = useState<ReelSettings>(REEL_DEFAULT);
+  useEffect(() => {
+    try {
+      setReelSettingsState(parseReel(localStorage.getItem(REEL_KEY)));
+    } catch {
+      // 保存が使えなくても初期値で動く
+    }
+  }, []);
+  const setReelSettings = useCallback((v: ReelSettings) => {
+    setReelSettingsState(v);
+    try {
+      localStorage.setItem(REEL_KEY, reelKeyValue(v));
+    } catch {}
+  }, []);
+  // 並びと今の番号（残りの秒数は毎秒変わるので別に持ち、時計や見張りを作り直さない）
+  const [reel, setReel] = useState<{ items: ReelItem[]; index: number } | null>(null);
+  const [reelRemain, setReelRemain] = useState(0);
+  const reelSeekAt = useRef(0);
+  // scroll：始めたときだけ動画が見える所へ動かす。自動で次へ進むときは、チャットを読んでいても画面を動かさない
+  const reelGo = useCallback(
+    (items: ReelItem[], index: number, scroll: boolean) => {
+      const it = items[index];
+      reelSeekAt.current = Date.now();
+      if (scroll) seek(it.start);
+      else player.current?.seek(it.start);
+      setReel({ items, index });
+      setReelRemain(it.end - it.start);
+    },
+    [seek],
+  );
+  const durationSec = reelDurationSec(
+    state.kind === "job" ? state.job.result?.lastBucketSec : undefined,
+  );
+  const startReel = useCallback(() => {
+    const items = reelPlan(peaks, reelSettings, lead, durationSec);
+    if (items.length > 0) reelGo(items, 0, true);
+  }, [peaks, reelSettings, lead, durationSec, reelGo]);
+  const stopReel = useCallback(() => setReel(null), []);
+  // 目次の山が変わったら（絞り込み・グラフに出す数を変えた）、番号がずれるので止める
+  // biome-ignore lint/correctness/useExhaustiveDependencies: peaks が変わったことだけを合図にする
+  useEffect(() => {
+    setReel(null);
+  }, [peaks]);
+  useEffect(() => {
+    if (!reel) return;
+    const timer = setInterval(() => {
+      const p = player.current;
+      if (!p) return;
+      const st = reelStep(
+        reel.items,
+        reel.index,
+        p.getTime(),
+        Date.now() - reelSeekAt.current,
+        p.isEnded(),
+      );
+      if (st.kind === "stay") setReelRemain(st.remain);
+      else if (st.kind === "next") reelGo(reel.items, st.index, false);
+      else if (st.kind === "done") {
+        // 最後の見どころの終わりで止める
+        p.pause();
+        setReel(null);
+        pushNote("見どころを最後まで再生しました");
+      } else {
+        setReel(null);
+        pushNote("見どころ再生を止めました");
+      }
+    }, 500);
+    return () => clearInterval(timer);
+  }, [reel, reelGo, pushNote]);
+  const reelNow: ReelNow | null = reel
+    ? {
+        index: reel.index,
+        count: reel.items.length,
+        peakSec: reel.items[reel.index].peakSec,
+        remain: reelRemain,
+      }
+    : null;
+  const reelMove = (d: -1 | 1) => {
+    if (!reel) return;
+    const to = reel.index + d;
+    if (to >= 0 && to < reel.items.length) reelGo(reel.items, to, false);
+  };
+  const chartReel: ChartReel = reel
+    ? {
+        window: { start: reel.items[reel.index].start, end: reel.items[reel.index].end },
+        played: reel.items.slice(0, reel.index).map((x) => ({ start: x.start, end: x.end })),
+        marks: reel.items.map((x, i) => ({
+          sec: x.peakSec,
+          n: x.n,
+          state: i < reel.index ? "done" : i === reel.index ? "now" : "todo",
+        })),
+        onPick: (n) => reelGo(reel.items, n, false),
+      }
+    : {
+        window: null,
+        played: [],
+        marks: peaks.map((p, n) => ({ sec: p.startSec, n, state: "todo" })),
+        onPick: (n) => {
+          const p = peaks[n];
+          if (p) seekPeak(p.startSec);
+        },
+      };
+  // スマホでグラフが画面の外に出たら、下に同じ操作の列を出す
+  const chartBox = useRef<HTMLElement>(null);
+  const [chartSeen, setChartSeen] = useState(true);
+  const reeling = reel !== null;
+  useEffect(() => {
+    const el = chartBox.current;
+    if (!reeling || !el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([e]) => setChartSeen(e.isIntersecting));
+    io.observe(el);
+    return () => io.disconnect();
+  }, [reeling]);
+  // 山の名札（#62）：「すべて」と「反応」で、目次の山のいちばん多い反応。種類を選んでいるときはその種類の山だけ。
+  const reactBySec = useMemo(
+    () => new Map((reactRows ?? []).map((r) => [r.startSec, r])),
+    [reactRows],
+  );
+  const showTags = (series === "all" || reactions) && reactRows !== null;
+  const tagOf = (sec: number) => (showTags ? dominantReaction(reactBySec.get(sec)) : null);
+  const chartTags = showTags
+    ? peaks
+        .map((p) => ({ sec: p.startSec, kind: tagOf(p.startSec) }))
+        .filter(
+          (t): t is { sec: number; kind: ReactionKey } =>
+            t.kind !== null && (!reactFocus || t.kind === reactFocus),
+        )
+    : [];
+  // 積み上げは、反応の数と棒の数（絞り込み中は絞り込んだ数）が両方そろってから
+  const reactReady = reactions && reactRows !== null && (!recount || filtered !== null);
+  const reactTotals = useMemo(() => (reactRows ? reactionTotals(reactRows) : null), [reactRows]);
+  const reelStart = peaks.length > 0 && (
+    <ReelStart
+      settings={reelSettings}
+      onSettings={setReelSettings}
+      totalSec={reelTotalSec(peaks, reelSettings)}
+      onStart={startReel}
+    />
+  );
+
   if (state.kind === "notfound") {
     return (
       <main style={{ maxWidth: 760, margin: "0 auto", padding: "32px 16px" }}>
@@ -510,8 +708,9 @@ export function AnalysisView({ id }: { id: string }) {
     termData[k.term] ? [{ term: k.term, color: k.color, buckets: termData[k.term] }] : [],
   );
 
-  const chartHeading =
-    users && filtered !== null
+  const chartHeading = reactions
+    ? "反応の種類（30秒ごと）"
+    : users && filtered !== null
       ? "コメントした人数（30秒ごと）"
       : laugh && filtered !== null
         ? "笑いの数（30秒ごと）"
@@ -634,7 +833,7 @@ export function AnalysisView({ id }: { id: string }) {
               )}
             </div>
 
-            <section style={{ ...card, marginTop: 16 }}>
+            <section ref={chartBox} style={{ ...card, marginTop: 16 }}>
               <div
                 style={{
                   display: "flex",
@@ -645,8 +844,22 @@ export function AnalysisView({ id }: { id: string }) {
                   marginBottom: 8,
                 }}
               >
-                <h2 style={{ fontSize: 16, margin: 0 }}>{chartHeading}</h2>
-                {done?.result && (
+                <h2 style={{ fontSize: 16, margin: 0 }}>
+                  {reel ? "見どころ再生中" : chartHeading}
+                </h2>
+                {reelNow && (
+                  <div
+                    style={{ marginLeft: "auto", display: "flex", minWidth: 0, flex: "1 1 18rem" }}
+                  >
+                    <ReelStatus
+                      now={reelNow}
+                      onPrev={() => reelMove(-1)}
+                      onNext={() => reelMove(1)}
+                      onStop={stopReel}
+                    />
+                  </div>
+                )}
+                {done?.result && !reel && (
                   <div
                     style={{
                       marginLeft: "auto",
@@ -656,6 +869,7 @@ export function AnalysisView({ id }: { id: string }) {
                       gap: 8,
                     }}
                   >
+                    {reelStart}
                     <Segmented
                       label="スパム（連投・長いコピペ）"
                       options={SPAM}
@@ -683,7 +897,51 @@ export function AnalysisView({ id }: { id: string }) {
                   / 全 {total.toLocaleString("ja-JP")} 件
                 </p>
               )}
-              {state.kind === "job" && state.buckets ? (
+              {reactions && state.kind === "job" && state.buckets && !reactReady ? (
+                // 反応の数がそろうまで、青い棒を「反応の種類」の見出しの下に出さない
+                <div
+                  role={reactError ? "alert" : "status"}
+                  style={{
+                    height: 162,
+                    display: "grid",
+                    placeItems: "center",
+                    alignContent: "center",
+                    gap: 8,
+                    background: "var(--surface-2)",
+                    borderRadius: 6,
+                    color: "var(--muted)",
+                    textAlign: "center",
+                    padding: 12,
+                  }}
+                >
+                  {reactError ? (
+                    <>
+                      <span style={{ color: "var(--text)" }}>
+                        ⚠ 反応の種類を読み込めませんでした
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setReactTry((n) => n + 1)}
+                        style={{
+                          minWidth: 44,
+                          minHeight: 44,
+                          padding: "0 16px",
+                          border: "1px solid var(--line)",
+                          borderRadius: "var(--radius)",
+                          background: "var(--surface)",
+                          color: "var(--text)",
+                          font: "inherit",
+                          cursor: "pointer",
+                        }}
+                      >
+                        もう一度
+                      </button>
+                    </>
+                  ) : (
+                    "反応の種類を数えています…"
+                  )}
+                </div>
+              ) : state.kind === "job" && state.buckets ? (
                 <BucketChart
                   key={id}
                   keyHint={!keysSeen}
@@ -702,12 +960,20 @@ export function AnalysisView({ id }: { id: string }) {
                   mark={mark}
                   clips={cleanClips(done?.result?.clips)}
                   lines={lines}
+                  reel={done?.result ? chartReel : undefined}
+                  stack={
+                    reactReady && reactRows ? { rows: reactRows, focus: reactFocus } : undefined
+                  }
+                  tags={chartTags}
                 />
               ) : (
                 <div
                   aria-hidden
                   style={{ height: 162, background: "var(--surface-2)", borderRadius: 6 }}
                 />
+              )}
+              {reactions && (
+                <ReactionChips totals={reactTotals} focus={reactFocus} onFocus={setReactFocus} />
               )}
               {done?.result && (
                 <KeywordLines items={keywordItems} total={total} onChange={setTerms} />
@@ -831,12 +1097,14 @@ export function AnalysisView({ id }: { id: string }) {
                 className="chat-list-wrap"
                 hidden={tab !== "toc"}
               >
+                {!reel && reelStart && <div style={{ marginBottom: 8 }}>{reelStart}</div>}
                 <TocPanel
                   buckets={recount ? filtered : state.kind === "job" ? state.buckets : null}
                   laugh={laugh}
                   users={users}
                   getTime={getTime}
                   onSeek={seekPeak}
+                  tagOf={tagOf}
                 />
               </div>
               <div
@@ -860,7 +1128,16 @@ export function AnalysisView({ id }: { id: string }) {
           )}
         </div>
       )}
-      <div className="toast-stack">
+      {reelNow && !chartSeen && (
+        <ReelMini
+          now={reelNow}
+          onPrev={() => reelMove(-1)}
+          onNext={() => reelMove(1)}
+          onStop={stopReel}
+        />
+      )}
+      {/* 下の列が出ているときは、お知らせをその上に出す（基本 8-1） */}
+      <div className={reelNow && !chartSeen ? "toast-stack above-reel-mini" : "toast-stack"}>
         {[...notes].reverse().map((n) => (
           <NoteToast key={n.id} note={n} onClose={closeNote} onUndo={undoNote} />
         ))}

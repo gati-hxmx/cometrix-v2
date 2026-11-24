@@ -34,6 +34,10 @@ export type PlayerHandle = {
   getTime(): number;
   /** 再生中なら止め、止まっていれば再生する（キー操作のスペース、#66）。 */
   togglePlay(): void;
+  /** 止める（再生中でなければ何もしない） */
+  pause(): void;
+  /** 動画の最後まで来て止まっているか */
+  isEnded(): boolean;
 };
 
 let apiPromise: Promise<YTApi> | null = null;
@@ -68,6 +72,18 @@ export function YoutubePlayer({ videoId, ref }: { videoId: string; ref?: Ref<Pla
   const [blocked, setBlocked] = useState(false);
 
   useImperativeHandle(ref, () => ({
+    pause() {
+      try {
+        player.current?.pauseVideo();
+      } catch {}
+    },
+    isEnded() {
+      try {
+        return player.current?.getPlayerState() === 0;
+      } catch {
+        return false;
+      }
+    },
     togglePlay() {
       const p = player.current;
       if (!p) return;

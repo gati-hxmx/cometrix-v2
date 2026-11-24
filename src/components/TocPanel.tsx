@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { type Bucket, formatTime } from "../lib/chart";
+import { type ReactionKey, reactionColor, reactionName } from "../lib/reactions";
 import { nearestIndex, pickPeaks } from "../lib/toc";
 
 /** 時刻の目次（#51）。今グラフに出している数から盛り上がりの上位を並べ、押すとその時刻から再生する。 */
@@ -10,6 +11,7 @@ export function TocPanel({
   users = false,
   getTime,
   onSeek,
+  tagOf,
 }: {
   /** null は読み込み中 */
   buckets: Bucket[] | null;
@@ -18,6 +20,8 @@ export function TocPanel({
   users?: boolean;
   getTime: () => number;
   onSeek: (sec: number) => void;
+  /** 山のいちばん多い反応（#62）。名札を出さないときは null */
+  tagOf?: (sec: number) => ReactionKey | null;
 }) {
   const entries = useMemo(() => (buckets ? pickPeaks(buckets) : null), [buckets]);
   const [now, setNow] = useState<number | null>(null);
@@ -68,6 +72,30 @@ export function TocPanel({
             <span style={{ color: "var(--accent-dark)", fontWeight: 700 }}>
               {formatTime(e.startSec)}
             </span>
+            {(() => {
+              const k = tagOf?.(e.startSec);
+              return k ? (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    padding: "1px 8px",
+                    borderRadius: 999,
+                    background: "var(--surface-2)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <span
+                    aria-hidden
+                    style={{ width: 8, height: 8, borderRadius: 2, background: reactionColor(k) }}
+                  />
+                  {reactionName(k)}
+                </span>
+              ) : null;
+            })()}
             <span style={{ marginLeft: "auto" }}>
               {laugh ? "笑い " : ""}
               {e.count.toLocaleString("ja-JP")} {users ? "人" : "件"}

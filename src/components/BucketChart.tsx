@@ -15,6 +15,14 @@ import {
 } from "../lib/chart-range";
 import type { Clip } from "../lib/clips";
 import { type Donation, groupDonations, kindText } from "../lib/donations";
+import {
+  REACTION_KINDS,
+  type ReactionBucket,
+  type ReactionKey,
+  reactionColor,
+  reactionName,
+} from "../lib/reactions";
+import { stripLayout } from "../lib/reel";
 
 const MAX_BARS = 120;
 /** キー操作の案内（#66）。J L の秒数はグラフの下の「‹ N 秒 ›」と同じ。 */
@@ -25,6 +33,21 @@ const AXIS_BOTTOM = 22;
 const AXIS_RIGHT = 16;
 const AXIS_RIGHT_LINES = 36;
 const DRAG_THRESHOLD = 4;
+/** 見どころの番号の札（#61）：押せる大きさ（縦横 44px） */
+const STRIP_ROW = 44;
+const STRIP_W = 44;
+
+export type ReelMark = { sec: number; n: number; state: "done" | "now" | "todo" };
+/** 見どころ再生（#61）でグラフに出すもの */
+export type ChartReel = {
+  /** いま再生している範囲。再生していなければ null */
+  window: { start: number; end: number } | null;
+  /** 済んだ範囲（棒を少し薄い青にする） */
+  played: { start: number; end: number }[];
+  /** グラフの下の番号の札 */
+  marks: ReelMark[];
+  onPick: (n: number) => void;
+};
 
 const stepButton = {
   flex: "0 0 auto",
@@ -63,6 +86,9 @@ export function BucketChart({
   lines = [],
   keyHint = false,
   onRange,
+  reel,
+  stack,
+  tags = [],
 }: {
   buckets: Bucket[];
   /** 今出している範囲（区間の番号）が変わったとき。画像の保存に使う（#69） */
@@ -90,6 +116,12 @@ export function BucketChart({
   clips?: Clip[];
   /** 重ねる言葉の線（#53）。棒と同じ区間の数。縦軸は右側に別に取る。 */
   lines?: { term: string; color: string; buckets: Bucket[] }[];
+  /** 見どころ再生（#61）：いまの範囲の塗り・済んだ棒・下の番号の札 */
+  reel?: ChartReel;
+  /** 反応の種類で積み上げる（#62）。focus の種類をいちばん下に置き、ほかを薄くする */
+  stack?: { rows: ReactionBucket[]; focus: ReactionKey | null };
+  /** 山の上の反応の名札（#62）。先のものから、重ならないものだけ出す */
+  tags?: { sec: number; kind: ReactionKey }[];
 }) {
   const total = buckets.length;
   // 選んだ棒は元の区間の番号で持つ（拡大・移動しても同じ棒を指す）。
@@ -149,13 +181,13 @@ export function BucketChart({
   const toSec = (view[view.length - 1]?.startSec ?? 0) + bucketSec;
   const xOf = (sec: number) => ((sec - fromSec) / (toSec - fromSec)) * 100;
 
-  const marks = groupDonations(donations, {
+  const donationMarks = groupDonations(donations, {
     bucketSec,
     startBucket: range.start,
     endBucket: range.end,
     group,
   });
-  const shownMark = marks.find((m) => m.bar === markHover) ?? null;
+  const shownMark = donationMarks.find((m) => m.bar === markHover) ?? null;
 
   // 最新の値を、画面の外のイベント（ホイール）から使うための置き場。
   const latest = useRef({ range: exact, total });
@@ -390,10 +422,71 @@ export function BucketChart({
       .join("・");
   const detail = (b: Bucket, i: number) =>
     lines.length > 0 ? `${countText(b.count)}・${termText(i)}` : countText(b.count);
-  const label = (b: Bucket, i: number) => `${formatTime(b.startSec)} から ${detail(b, i)}`;
+  // 積み上げのときは、色だけにせず種類ごとの数も読み上げる（基本 8、colors.md 3-1）
+  const kindsText = (i: number) =>
+    stackBars
+      ? stackBars
+          .filter((s) => (s.bars[i]?.count ?? 0) > 0)
+          .map((s) => `${reactionName(s.kind)} ${s.bars[i].count}`)
+          .join("・")
+      : "";
+  const label = (b: Bucket, i: number) => {
+    const kinds = kindsText(i);
+    return `${formatTime(b.startSec)} から ${detail(b, i)}${kinds ? `（${kinds}）` : ""}`;
+  };
   const visibleClips = clips.filter((c) => c.offsetSec >= fromSec && c.offsetSec < toSec);
   const openClip = clips.find((c) => c.id === clipId) ?? null;
   const playX = playSec > 0 && playSec >= fromSec && playSec < toSec ? xOf(playSec) : null;
+  // 反応の積み上げ（#62）：棒と同じ範囲・同じまとめ方で種類ごとに数える。選んだ種類を下に。
+  const stackOrder = stack?.focus
+    ? [stack.focus, ...REACTION_KINDS.filter((k) => k !== stack.focus)]
+    : REACTION_KINDS;
+  const stackBars = (() => {
+    if (!stack) return null;
+    const bySec = new Map(stack.rows.map((r) => [r.startSec, r]));
+    return stackOrder.map((k) => ({
+      kind: k,
+      bars: groupBuckets(
+        view.map((b) => ({ startSec: b.startSec, count: bySec.get(b.startSec)?.[k] ?? 0 })),
+        MAX_BARS,
+        "sum",
+      ),
+    }));
+  })();
+  // 名札：区間の番号から棒を決め、重ならないものだけ（先のものを優先）。
+  const tagPlaced: { sec: number; kind: ReactionKey; bar: number }[] = [];
+  if (plotWidth > 0) {
+    const used: { x: number; w: number }[] = [];
+    for (const t of tags) {
+      const raw = Math.round((t.sec - (buckets[0]?.startSec ?? 0)) / bucketSec);
+      const bar = barOf(raw);
+      if (bar === null || !bars[bar]) continue;
+      const x = ((bar + 0.5) / bars.length) * plotWidth;
+      const w = reactionName(t.kind).length * 12 + 16;
+      if (used.some((u) => Math.abs(u.x - x) < (u.w + w) / 2 + 4)) continue;
+      used.push({ x, w });
+      tagPlaced.push({ ...t, bar });
+    }
+  }
+  // 見どころ再生（#61）。棒は「まとめた区間」なので、区間の始まりが範囲に入るかで決める。
+  const groupSec = group * bucketSec;
+  const overlaps = (b: Bucket, w: { start: number; end: number }) =>
+    b.startSec < w.end && b.startSec + groupSec > w.start;
+  const inWindow = (b: Bucket) => (reel?.window ? overlaps(b, reel.window) : false);
+  const wasPlayed = (b: Bucket) => reel?.played.some((w) => overlaps(b, w)) ?? false;
+  const win = reel?.window;
+  const marks = (reel?.marks ?? []).filter((m) => m.sec >= fromSec && m.sec < toSec);
+  // 幅が測れるまでは1段に並べる（測れてから段が減って高さが跳ねないように）
+  const markAt =
+    plotWidth > 0
+      ? stripLayout(
+          marks.map((m) => (xOf(m.sec) / 100) * plotWidth),
+          STRIP_W + 4,
+          plotWidth,
+        )
+      : marks.map(() => ({ row: 0, x: 0 }));
+  const stripHeight =
+    marks.length > 0 ? (Math.max(...markAt.map((p) => p.row)) + 1) * STRIP_ROW : 0;
 
   return (
     <div>
@@ -502,6 +595,22 @@ export function BucketChart({
             {formatTime(t)}
           </span>
         ))}
+        {win && win.end > fromSec && win.start < toSec && (
+          <div
+            aria-hidden
+            data-testid="reel-window"
+            style={{
+              position: "absolute",
+              top: -6,
+              bottom: 0,
+              left: `${Math.max(0, xOf(win.start))}%`,
+              width: `${Math.max(0.6, Math.min(100, xOf(win.end)) - Math.max(0, xOf(win.start)))}%`,
+              background: "var(--accent-weak)",
+              borderRadius: 2,
+              pointerEvents: "none",
+            }}
+          />
+        )}
         {/* biome-ignore lint/a11y/noStaticElementInteractions: 中の棒（button）で起きた操作をまとめて受ける入れ物。それ自体は操作の対象ではない */}
         <div
           ref={plot}
@@ -553,23 +662,45 @@ export function BucketChart({
             >
               <span
                 style={{
-                  display: "block",
+                  display: stackBars ? "flex" : "block",
+                  flexDirection: "column-reverse",
+                  overflow: "hidden",
                   width: "100%",
                   height: `${Math.max(2, (b.count / top) * 100)}%`,
-                  background:
-                    selectedBar === i
+                  background: stackBars
+                    ? "transparent"
+                    : selectedBar === i
                       ? "var(--accent-dark)"
-                      : i === peak
+                      : i === peak || inWindow(b)
                         ? "var(--accent)"
-                        : laugh
-                          ? "var(--chart-2)"
-                          : "var(--chart-1)",
+                        : wasPlayed(b)
+                          ? "var(--accent-line)"
+                          : laugh
+                            ? "var(--chart-2)"
+                            : "var(--chart-1)",
                   filter: hover === i ? "brightness(0.8)" : undefined,
                   outline: selectedBar === i ? "2px solid var(--accent-dark)" : "none",
                   outlineOffset: 1,
                   borderRadius: "2px 2px 0 0",
                 }}
-              />
+              >
+                {stackBars?.map(({ kind, bars: kb }) => {
+                  const n = kb[i]?.count ?? 0;
+                  return n > 0 && b.count > 0 ? (
+                    <span
+                      key={kind}
+                      data-kind={kind}
+                      style={{
+                        display: "block",
+                        flex: "none",
+                        height: `${(n / b.count) * 100}%`,
+                        background: reactionColor(kind),
+                        opacity: stack?.focus && stack.focus !== kind ? 0.22 : 1,
+                      }}
+                    />
+                  ) : null;
+                })}
+              </span>
             </button>
           ))}
         </div>
@@ -716,12 +847,12 @@ export function BucketChart({
             ))}
           </>
         )}
-        {marks.length > 0 && (
+        {donationMarks.length > 0 && (
           <div
             data-testid="donation-marks"
             style={{ position: "absolute", left: 0, right: 0, top: -32, height: 44, zIndex: 1 }}
           >
-            {marks.map((m) => (
+            {donationMarks.map((m) => (
               <button
                 key={m.bar}
                 type="button"
@@ -790,6 +921,30 @@ export function BucketChart({
             {shownMark.items.length > 3 && <div>ほか {shownMark.items.length - 3} 件</div>}
           </div>
         )}
+        {tagPlaced.map((t) => (
+          <span
+            key={t.sec}
+            aria-hidden
+            data-testid="reaction-tag"
+            style={{
+              position: "absolute",
+              left: `${((t.bar + 0.5) / bars.length) * 100}%`,
+              bottom: `calc(${Math.max(2, (bars[t.bar].count / top) * 100)}% + 4px)`,
+              transform: "translateX(-50%)",
+              padding: "1px 8px",
+              borderRadius: 999,
+              background: reactionColor(t.kind),
+              color: "var(--r-text)",
+              fontSize: 11,
+              fontWeight: 700,
+              whiteSpace: "nowrap",
+              pointerEvents: "none",
+              zIndex: 1,
+            }}
+          >
+            {reactionName(t.kind)}
+          </span>
+        ))}
         {playX !== null && (
           <div
             aria-hidden
@@ -833,6 +988,73 @@ export function BucketChart({
           </div>
         )}
       </div>
+      {marks.length > 0 && (
+        <ol
+          aria-label="見どころ（押すとその山へ）"
+          data-testid="reel-strip"
+          style={{
+            listStyle: "none",
+            padding: 0,
+            position: "relative",
+            margin: `0 ${lines.length > 0 ? AXIS_RIGHT_LINES : AXIS_RIGHT}px 4px ${AXIS_LEFT}px`,
+            height: stripHeight,
+          }}
+        >
+          {marks.map((m, k) => (
+            <li
+              key={m.sec}
+              style={{
+                position: "absolute",
+                // 幅が測れるまでは山の位置、測れたら重ならないようずらした位置
+                left: plotWidth > 0 ? markAt[k].x : `${xOf(m.sec)}%`,
+                top: markAt[k].row * STRIP_ROW,
+                transform: "translateX(-50%)",
+              }}
+            >
+              <button
+                type="button"
+                aria-label={`見どころ ${m.n + 1}（${formatTime(m.sec)}）`}
+                aria-current={m.state === "now" ? "true" : undefined}
+                onClick={() => reel?.onPick(m.n)}
+                style={{
+                  width: STRIP_W,
+                  height: STRIP_ROW,
+                  padding: 0,
+                  border: 0,
+                  background: "transparent",
+                  cursor: "pointer",
+                  display: "grid",
+                  placeItems: "center",
+                }}
+              >
+                <span
+                  style={{
+                    minWidth: 28,
+                    height: 26,
+                    padding: "0 4px",
+                    borderRadius: 7,
+                    display: "grid",
+                    placeItems: "center",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    fontVariantNumeric: "tabular-nums",
+                    border: "1.5px solid var(--accent)",
+                    background:
+                      m.state === "now"
+                        ? "var(--accent)"
+                        : m.state === "done"
+                          ? "var(--accent-weak)"
+                          : "var(--surface)",
+                    color: m.state === "now" ? "var(--surface)" : "var(--accent-dark)",
+                  }}
+                >
+                  {m.n + 1}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
       {openClip && (
         <p
           aria-live="polite"
