@@ -10,6 +10,12 @@ import { LEAD_DEFAULT, LEAD_KEY, type Lead, leadTarget, parseLead } from "../lib
 import { STEP_DEFAULT, seekTarget } from "../lib/playback";
 import { type FetchProgress, progressLabel, progressPercent } from "../lib/progress";
 import {
+  dominantReaction,
+  type ReactionBucket,
+  type ReactionKey,
+  reactionTotals,
+} from "../lib/reactions";
+import {
   parseReel,
   REEL_DEFAULT,
   REEL_KEY,
@@ -31,6 +37,7 @@ import { MemoPanel } from "./MemoPanel";
 import { PeoplePanel } from "./PeoplePanel";
 import { PlaybackBar } from "./PlaybackBar";
 import { Player } from "./Player";
+import { ReactionChips } from "./ReactionChips";
 import { ReanalyzeButton } from "./ReanalyzeButton";
 import { ReelMini, type ReelNow, ReelStart, ReelStatus } from "./ReelControls";
 import { SavedFilters } from "./SavedFilters";
@@ -101,6 +108,7 @@ const SERIES = [
   { key: "all", name: "すべて" },
   { key: "laugh", name: "笑い" },
   { key: "users", name: "人数" },
+  { key: "reactions", name: "反応" },
 ] as const;
 const SPAM = [
   { key: "on", name: "スパム除外" },
@@ -261,7 +269,11 @@ export function AnalysisView({ id }: { id: string }) {
   const [picked, setPicked] = useState<{ start: number; end: number; n: number } | null>(null);
   const [mark, setMark] = useState<{ start: number; end: number } | null>(null);
   const [filtered, setFiltered] = useState<Bucket[] | null>(null);
-  const [series, setSeries] = useState<"all" | "laugh" | "users">("all");
+  const [series, setSeries] = useState<"all" | "laugh" | "users" | "reactions">("all");
+  // 反応の種類（#62）。「反応」のときは棒を種類で積み上げ、札で選んだ種類を下に置いて浮かせる。
+  const reactions = series === "reactions";
+  const [reactFocus, setReactFocus] = useState<ReactionKey | null>(null);
+  const [reactRows, setReactRows] = useState<ReactionBucket[] | null>(null);
   const laugh = series === "laugh";
   // コメントした人の数（同じ人の連投は1人。#55）。
   const users = series === "users";
@@ -312,6 +324,34 @@ export function AnalysisView({ id }: { id: string }) {
       stale = true;
     };
   }, [filter, recount, laugh, spam, users, isDone, id, filtering]);
+
+  // 反応の種類ごとの数（#62）。「すべて」の名札と「反応」の積み上げに使う。絞り込み・スパム除外はグラフと同じ。
+  const reactionsRef = useRef(reactions);
+  reactionsRef.current = reactions;
+  const wantReactions = isDone && (series === "all" || reactions);
+  useEffect(() => {
+    if (!wantReactions) return;
+    let stale = false;
+    setReactRows(null);
+    const p = filterParams(filter);
+    if (spam) p.set("spam", "1");
+    fetch(`/api/jobs/${id}/reactions?${p}`, { cache: "no-store" })
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json() as Promise<ReactionBucket[]>;
+      })
+      .then((b) => !stale && setReactRows(b))
+      // 「すべて」の名札は出なくても困らないので、知らせるのは「反応」を選んでいるときだけ
+      .catch(
+        () => !stale && reactionsRef.current && setToast("反応の種類を読み込めませんでした。"),
+      );
+    return () => {
+      stale = true;
+    };
+  }, [wantReactions, filter, spam, id]);
+  useEffect(() => {
+    if (!reactions) setReactFocus(null);
+  }, [reactions]);
 
   // 重ねる言葉ごとに、その言葉を含むコメントの数を読む（#53）。読み込み中の言葉は二重に読まない。
   const loading = useRef(new Set<string>());
@@ -589,6 +629,22 @@ export function AnalysisView({ id }: { id: string }) {
     io.observe(el);
     return () => io.disconnect();
   }, [reeling]);
+  // 山の名札（#62）：「すべて」と「反応」で、目次の山のいちばん多い反応。種類を選んでいるときはその種類の山だけ。
+  const reactBySec = useMemo(
+    () => new Map((reactRows ?? []).map((r) => [r.startSec, r])),
+    [reactRows],
+  );
+  const showTags = (series === "all" || reactions) && reactRows !== null;
+  const tagOf = (sec: number) => (showTags ? dominantReaction(reactBySec.get(sec)) : null);
+  const chartTags = showTags
+    ? peaks
+        .map((p) => ({ sec: p.startSec, kind: tagOf(p.startSec) }))
+        .filter(
+          (t): t is { sec: number; kind: ReactionKey } =>
+            t.kind !== null && (!reactFocus || t.kind === reactFocus),
+        )
+    : [];
+  const reactTotals = useMemo(() => (reactRows ? reactionTotals(reactRows) : null), [reactRows]);
   const reelStart = peaks.length > 0 && (
     <ReelStart
       settings={reelSettings}
@@ -632,8 +688,9 @@ export function AnalysisView({ id }: { id: string }) {
     termData[k.term] ? [{ term: k.term, color: k.color, buckets: termData[k.term] }] : [],
   );
 
-  const chartHeading =
-    users && filtered !== null
+  const chartHeading = reactions
+    ? "反応の種類（30秒ごと）"
+    : users && filtered !== null
       ? "コメントした人数（30秒ごと）"
       : laugh && filtered !== null
         ? "笑いの数（30秒ごと）"
@@ -839,12 +896,19 @@ export function AnalysisView({ id }: { id: string }) {
                   clips={cleanClips(done?.result?.clips)}
                   lines={lines}
                   reel={done?.result ? chartReel : undefined}
+                  stack={
+                    reactions && reactRows ? { rows: reactRows, focus: reactFocus } : undefined
+                  }
+                  tags={chartTags}
                 />
               ) : (
                 <div
                   aria-hidden
                   style={{ height: 162, background: "var(--surface-2)", borderRadius: 6 }}
                 />
+              )}
+              {reactions && (
+                <ReactionChips totals={reactTotals} focus={reactFocus} onFocus={setReactFocus} />
               )}
               {done?.result && (
                 <KeywordLines items={keywordItems} total={total} onChange={setTerms} />
@@ -974,6 +1038,7 @@ export function AnalysisView({ id }: { id: string }) {
                   users={users}
                   getTime={getTime}
                   onSeek={seekPeak}
+                  tagOf={tagOf}
                 />
               </div>
               <div
